@@ -1,0 +1,13 @@
+{
+    "learning_velocity": "medium",
+    "boredom_score": 3,
+    "confusion_score": 1,
+    "explanation_preference": "balance",
+    "question_depth_trend": "shallow",
+    "emotional_state": "neutral",
+    "spaced_repetition_flags": [],
+    "pretend_understanding_flags": 0,
+    "session_engagement": {
+        "total_messages": 0
+    }
+}

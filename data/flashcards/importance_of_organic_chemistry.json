@@ -1,0 +1,32 @@
+[
+    {
+        "front": "What is the main focus of organic chemistry?",
+        "back": "The study of carbon compounds, specifically molecules with carbon-hydrogen (C-H) bonds.",
+        "concept": "Importance of Organic Chemistry",
+        "difficulty": "easy"
+    },
+    {
+        "front": "What are some common applications of organic chemistry in agriculture?",
+        "back": "Pesticides, herbicides, and fertilizers.",
+        "concept": "Importance of Organic Chemistry",
+        "difficulty": "medium"
+    },
+    {
+        "front": "What is a significant contribution of organic chemistry to the field of medicine?",
+        "back": "The development of many life-saving drugs, such as aspirin, penicillin, and chemotherapy agents.",
+        "concept": "Importance of Organic Chemistry",
+        "difficulty": "hard"
+    },
+    {
+        "front": "How does organic chemistry impact our daily lives?",
+        "back": "It is behind the development of many everyday products, including plastics and other materials.",
+        "concept": "Importance of Organic Chemistry",
+        "difficulty": "easy"
+    },
+    {
+        "front": "What is a key characteristic of carbon that makes it central to organic chemistry?",
+        "back": "Its unique ability to form strong covalent bonds with other atoms, including itself.",
+        "concept": "Importance of Organic Chemistry",
+        "difficulty": "hard"
+    }
+]

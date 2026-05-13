@@ -1,0 +1,73 @@
+{
+    "learning_velocity": "medium",
+    "boredom_score": 8,
+    "confusion_score": 0,
+    "explanation_preference": "balance",
+    "question_depth_trend": "shallow",
+    "emotional_state": "neutral",
+    "spaced_repetition_flags": [],
+    "pretend_understanding_flags": 0,
+    "session_engagement": {
+        "total_messages": 0
+    },
+    "module_history": [
+        {
+            "module_id": "m1",
+            "title": "Setting Up Python Environment and Essential Libraries",
+            "score": 80,
+            "failed_attempts": 0,
+            "concepts_count": 7,
+            "passed_at": "2026-05-01 21:08"
+        },
+        {
+            "module_id": "m1",
+            "title": "Introduction to Structural Engineering",
+            "score": 100,
+            "failed_attempts": 0,
+            "concepts_count": 1,
+            "passed_at": "2026-05-03 11:10"
+        },
+        {
+            "module_id": "m1",
+            "title": "Introduction to Reinforcement Learning",
+            "score": 100,
+            "failed_attempts": 0,
+            "concepts_count": 1,
+            "passed_at": "2026-05-03 11:23"
+        },
+        {
+            "module_id": "m1",
+            "title": "Introduction to Python for Data Science",
+            "score": 85,
+            "failed_attempts": 0,
+            "concepts_count": 3,
+            "passed_at": "2026-05-03 12:46"
+        },
+        {
+            "module_id": "m1",
+            "title": "Introduction to Python for Data Science",
+            "score": 85,
+            "failed_attempts": 3,
+            "concepts_count": 3,
+            "passed_at": "2026-05-03 12:49"
+        },
+        {
+            "module_id": "m1",
+            "title": "Reinforcement Learning Fundamentals",
+            "score": 80,
+            "failed_attempts": 0,
+            "concepts_count": 5,
+            "passed_at": "2026-05-03 18:23"
+        },
+        {
+            "module_id": "m1",
+            "title": "Reinforcement Learning Fundamentals",
+            "score": 80,
+            "failed_attempts": 0,
+            "concepts_count": 5,
+            "passed_at": "2026-05-03 18:24"
+        }
+    ],
+    "streak": 7,
+    "average_mastery": 87.1
+}

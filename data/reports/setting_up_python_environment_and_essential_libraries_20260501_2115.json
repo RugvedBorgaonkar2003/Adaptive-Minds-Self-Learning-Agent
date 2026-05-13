@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "timestamp": "2026-05-01T21:15:04",
+    "module_title": "Setting Up Python Environment and Essential Libraries",
+    "module_number": 1,
+    "curriculum_topic": "Python for Data Science"
+  },
+  "performance": {
+    "score": 80,
+    "prev_score": null,
+    "failed_attempts": 0,
+    "concepts_count": 7
+  },
+  "honest_three": {
+    "strength": "You passed this module.",
+    "struggled": "Some concepts need work.",
+    "action": "Review your notes."
+  },
+  "deep_dive": {
+    "concept_mastery": {
+      "Python installation": 90,
+      "Anaconda distribution": 85,
+      "NumPy library": 95,
+      "Pandas library": 80,
+      "Matplotlib library": 88,
+      "Seaborn library": 92,
+      "Scikit-learn library": 85
+    },
+    "learning_style_text": "This student prefers a balanced learning style, enjoying a mix of hands-on practice and theoretical explanations. They tend to stay focused and engaged when working on projects that challenge them. With a medium question depth trend, they can handle more in-depth topics but may need some guidance when exploring complex concepts.",
+    "learning_style_tags": [
+      "Direct Learner",
+      "Example-Driven"
+    ]
+  },
+  "journey": {
+    "avg_mastery": 80.0,
+    "streak": 1,
+    "total_modules_done": 1,
+    "total_in_course": 5,
+    "completion_pct": 20,
+    "total_concepts_mastered": 7,
+    "next_module_title": "Data Manipulation and Analysis with Pandas and NumPy",
+    "next_module_desc": "Master data manipulation techniques using Pandas, including data cleaning, filtering, sorting, grouping, and merging.",
+    "prereq_status": "ready",
+    "prereq_note": "Given your test score of 80/100, you are ready to proceed with the next module. Make sure to review the prerequisites for each new topic to ensure a smooth learning journey."
+  }
+}

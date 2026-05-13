@@ -1,0 +1,14 @@
+STDOUT:
+
+STDERR:
+Traceback (most recent call last):
+  File "C:\Users\Milind Borgaonkar\Desktop\Adaptive Minds Self Learning Agent\main.py", line 2, in <module>
+    from src.onboarding import OnboardingState
+  File "C:\Users\Milind Borgaonkar\Desktop\Adaptive Minds Self Learning Agent\src\onboarding.py", line 10, in <module>
+    class OnboardingState(TypedDict):
+    ...<98 lines>...
+                return {}
+  File "C:\Users\Milind Borgaonkar\Desktop\Adaptive Minds Self Learning Agent\src\onboarding.py", line 18, in OnboardingState
+    def interview_node(state: OnboardingState):
+                              ^^^^^^^^^^^^^^^
+NameError: name 'OnboardingState' is not defined

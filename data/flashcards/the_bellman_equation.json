@@ -1,0 +1,32 @@
+[
+    {
+        "front": "What is the primary function of an RNN cell's hidden state?",
+        "back": "It captures information from previous inputs.",
+        "concept": "The Bellman Equation",
+        "difficulty": "easy"
+    },
+    {
+        "front": "In the Elman RNN formulation, what is the purpose of the `tanh` activation function applied to the hidden state update?",
+        "back": "To squash the values of the hidden state to the range (-1, 1).",
+        "concept": "The Bellman Equation",
+        "difficulty": "medium"
+    },
+    {
+        "front": "What two components are used to update the hidden state `h_t` at every time step in an RNN?",
+        "back": "The current input `x_t` and the previous hidden state `h_{t-1}`.",
+        "concept": "The Bellman Equation",
+        "difficulty": "easy"
+    },
+    {
+        "front": "How does a bidirectional RNN's hidden state `h_t^bi` encode context from both directions?",
+        "back": "It combines a forward hidden state (`h_t`->) and a backward hidden state (`h_t`<-) into a single vector.",
+        "concept": "The Bellman Equation",
+        "difficulty": "medium"
+    },
+    {
+        "front": "Name two common NLP tasks where bidirectional RNNs are widely used.",
+        "back": "Named entity recognition (NER) and Part-of-Speech (POS) tagging.",
+        "concept": "The Bellman Equation",
+        "difficulty": "hard"
+    }
+]

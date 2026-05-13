@@ -1,0 +1,292 @@
+import os
+import re
+import json
+from typing import Optional, Dict, List
+from youtube_transcript_api import YouTubeTranscriptApi
+from crawl4ai import AsyncWebCrawler
+from langchain_community.tools import DuckDuckGoSearchResults
+from langchain_core.messages import SystemMessage, HumanMessage
+import asyncio
+
+from src.llm import get_llm
+
+class WebScraper:
+    def __init__(self):
+        pass
+
+    async def scrape_url(self, url: str) -> str:
+        """
+        Scrapes a given URL using Crawl4AI and returns the markdown content.
+        This provides clean, LLM-ready text for our knowledge base.
+        """
+        print(f"Scraping URL: {url}")
+        try:
+            async with AsyncWebCrawler(verbose=True) as crawler:
+                result = await crawler.arun(url=url)
+                # The markdown attribute contains the extracted content
+                return result.markdown if result else ""
+        except Exception as e:
+            print(f"Error scraping {url}: {e}")
+            return ""
+
+    def _extract_youtube_video_id(self, url: str) -> Optional[str]:#output can be string or None
+        """
+        Extracts the video ID from a YouTube URL.
+        """
+        # Supports various youtube urls (youtube.com, youtu.be)
+        pattern = r'(?:v=|\/)([0-9A-Za-z_-]{11}).*'
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+        return None
+
+    def get_youtube_transcript(self, url: str) -> str:
+        """
+        Fetches the transcript for a given YouTube video URL.
+        """
+        video_id = self._extract_youtube_video_id(url)
+        if not video_id:
+            return f"Error: Could not extract video ID from URL: {url}"
+
+        print(f"Fetching transcript for YouTube video ID: {video_id}")
+        try:
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            # Find the first available transcript
+            transcript = next(iter(transcript_list))
+            fetched_transcript = transcript.fetch()
+            
+            # Combine all text snippets into a single string
+            full_transcript = " ".join([entry['text'] for entry in fetched_transcript])
+            return full_transcript
+        except Exception as e:
+            print(f"Error fetching transcript: {e}")
+            return f"Error fetching transcript: {str(e)}"
+            
+    async def extract_source(self, url: str) -> str:
+        """
+        Automatically detects source type and extracts content.
+        """
+        if "youtube.com" in url or "youtu.be" in url:
+            return self.get_youtube_transcript(url)
+        else:
+            return await self.scrape_url(url)
+
+class ResearchAgent:
+    def __init__(self):
+        self.scraper = WebScraper()
+        self.llm = get_llm()
+        self.search_tool = DuckDuckGoSearchResults()
+        
+    def evaluate_source_quality(self, content: str, topic: str, level: str) -> bool:
+        """
+        Grades scraped content for relevance and substance using the LLM.
+        """
+        if not content or len(content) < 100:
+             # Too short to be a meaningful source
+             return False
+             
+        # Instead of just the first 2000 chars, take a representative sample 
+        # (beginning, middle, end) to avoid failing on long introductions/sponsor pitches.
+        if len(content) > 3000:
+            mid = len(content) // 2
+            preview = (
+                content[:3000] + 
+                "\n\n...[MIDDLE PORTION]...\n\n" + 
+                content[mid-500:mid+500] + 
+                "\n\n...[END PORTION]...\n\n" + 
+                content[-3000:]
+            )
+        else:
+            preview = content
+        
+        prompt = f"""Evaluate this raw web scrape for learning about: '{topic}' (Level: {level}).
+
+IGNORE website garbage (navigation menus, cookie banners, footers).
+Return {{"is_valid": true}} ONLY IF you find at least one substantive, educational paragraph explaining the core topic. Otherwise, return {{"is_valid": false}}.
+
+Text Snippet:
+{preview}
+"""
+        try:
+            response = self.llm.invoke([SystemMessage(content="You output ONLY valid JSON."), HumanMessage(content=prompt)])
+            
+            # Handle list content or string content
+            content_str = response.content
+            if isinstance(content_str, list):
+                content_str = "".join([block.get("text", "") for block in content_str if isinstance(block, dict)])
+            
+            raw_content = str(content_str).replace("```json", "").replace("```", "").strip()
+            result = json.loads(raw_content)
+            
+            is_valid = result.get("is_valid", False)
+            print(f"Source validation for topic '{topic}': {'PASSED' if is_valid else 'FAILED'}")
+            return is_valid
+        except Exception as e:
+            error_str = str(e).lower()
+            if "429" in error_str or "resource_exhausted" in error_str or "rate" in error_str:
+                # API rate limit — the content was scraped fine, so accept it
+                # rather than throwing away good data due to quota issues.
+                print(f"Quality gate hit rate limit: {e}. Accepting source to preserve data.")
+                return True
+            print(f"Quality gate error: {e}. Defaulting to discarding source to be safe.")
+            return False
+            
+    def evaluate_knowledge_sufficiency(self, current_knowledge: str, topic: str, level: str) -> dict:
+        """
+        Checks if current knowledge is enough to teach the topic at the desired level.
+        If not, generates search queries to find missing information.
+        """
+        prompt = f"""You are a Curriculum Director. 
+We need to teach a student about '{topic}' at a '{level}' level.
+Review the knowledge we have gathered so far. 
+
+Is this knowledge sufficient to create a comprehensive curriculum for '{level}' level?
+If YES: return {{"is_sufficient": true, "queries": []}}
+If NO: return {{"is_sufficient": false, "queries": ["query1", "query2"]}} where queries are DuckDuckGo search strings to find the missing advanced/specific information. Generate 1 to 3 targeted queries.
+
+Return ONLY valid JSON.
+
+Current Knowledge:
+{current_knowledge[:8000]}... (truncated)
+"""
+        try:
+             response = self.llm.invoke([SystemMessage(content="You output ONLY valid JSON."), HumanMessage(content=prompt)])
+             content_str = response.content
+             if isinstance(content_str, list):
+                 content_str = "".join([block.get("text", "") for block in content_str if isinstance(block, dict)])
+                 
+             raw_content = str(content_str).replace("```json", "").replace("```", "").strip()
+             return json.loads(raw_content)
+        except Exception as e:
+             print(f"Error evaluating sufficiency: {e}")
+             return {"is_sufficient": False, "queries": [f"{topic} {level} tutorial explanation"]}
+
+    def search_web(self, query: str) -> List[str]:
+        """
+        Uses DuckDuckGo to search the web and extracts URLs from the results.
+        """
+        print(f"Searching web for: '{query}'")
+        try:
+            results_str = self.search_tool.invoke(query)
+            # DuckDuckGoSearchResults returns a string, e.g., "[snippet: ..., title: ..., link: https://...], [...]"
+            # We need to extract the links.
+            urls = re.findall(r'link:\s*(https?://[^\],]+)', results_str)
+            # Remove duplicates and limit to top 3 to avoid excessive scraping
+            unique_urls = list(dict.fromkeys(urls))[:4]
+            print(f"Found URLs: {unique_urls}")
+            return unique_urls
+        except Exception as e:
+            print(f"Error searching web: {e}")
+            return []
+
+    async def conduct_research(self, topic: str, level: str, provided_urls: List[str] = None) -> str:  #we used none here for Provided_urls to prevent crash
+        """
+        Main orchestration loop for autonomous research.
+        """
+        if provided_urls is None:
+            provided_urls = []
+            
+        print(f"\n--- Starting Research for '{topic}' ({level} level) ---")
+        
+        knowledge_base = ""
+        processed_urls = set()
+        MAX_SCRAPE_LIMIT = 6  # Hard cap on total crawl4ai scrapes per session
+        scrape_count = 0
+        
+        # Step 1: Extract from provided sources
+        for url in provided_urls:
+            if url in processed_urls: continue
+            if scrape_count >= MAX_SCRAPE_LIMIT:
+                print(f"Scrape limit ({MAX_SCRAPE_LIMIT}) reached during provided sources. Stopping.")
+                break
+            print(f"Processing provided source: {url}")
+            content = await self.scraper.extract_source(url)
+            scrape_count += 1
+            
+            # Put provided URLS through quality gate too, just in case they gave a bad link
+            if self.evaluate_source_quality(content, topic, level):
+                 knowledge_base += f"\n\nSource: {url}\n{content}\n"
+            processed_urls.add(url)
+            
+        # Step 2 & 3: Evaluate Sufficiency & Autonomous Search Loop
+        max_search_loops = 2
+        loops = 0
+        
+        while loops < max_search_loops:
+            if scrape_count >= MAX_SCRAPE_LIMIT:
+                print(f"Scrape limit ({MAX_SCRAPE_LIMIT}) reached. Stopping autonomous search.")
+                break
+
+            print("\nEvaluating current knowledge sufficiency...")
+            eval_result = self.evaluate_knowledge_sufficiency(knowledge_base, topic, level)
+            
+            if eval_result.get("is_sufficient", False) and len(knowledge_base) > 500:
+                print("Knowledge is deemed sufficient!")
+                break
+                
+            queries = eval_result.get("queries", [])
+            if not queries:
+                 # If LLM said insufficient but gave no queries, fallback
+                 queries = [f"{topic} {level} concepts guide"]
+                 
+            print(f"Knowledge insufficient. Generated search queries: {queries}")
+            
+            new_content_added = False
+            for query in queries:
+                new_urls = self.search_web(query)
+                for url in new_urls:
+                    if url in processed_urls: continue
+                    if scrape_count >= MAX_SCRAPE_LIMIT:
+                        print(f"Scrape limit ({MAX_SCRAPE_LIMIT}) reached mid-search. Stopping.")
+                        break
+                    
+                    content = await self.scraper.extract_source(url)
+                    scrape_count += 1
+                    
+                    # Quality Gate!
+                    if self.evaluate_source_quality(content, topic, level):
+                        print(f"Source {url} passed quality gate. Adding to knowledge base.")
+                        knowledge_base += f"\n\nSource: {url}\n{content}\n"
+                        new_content_added = True
+                    else:
+                        print(f"Source {url} rejected by quality gate.")
+                        
+                    processed_urls.add(url)
+                
+                if scrape_count >= MAX_SCRAPE_LIMIT:
+                    break
+                    
+            if not new_content_added:
+                print("Search yielded no new valid information. Stopping research loop.")
+                break
+                    
+            loops += 1
+            
+        print(f"\n--- Research Complete (total scrapes: {scrape_count}/{MAX_SCRAPE_LIMIT}) ---")
+        return knowledge_base
+
+# Example usage (for testing)
+async def main():
+    agent = ResearchAgent()
+    scraper = WebScraper()
+    # Test Scenario 3: No sources provided
+    topic = "MLOPS"
+    level = "Begginer"
+    
+    print("Testing Autonomous Research with NO sources...")
+    knowledge = await agent.conduct_research(topic, level)
+    print(f"\nFinal extracted knowledge length: {len(knowledge)} characters")
+    print("Preview:\n" + knowledge[:500] + "\n...\n")
+
+    # To test Scenario 1 & 2, uncomment below:
+    # yt_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ" # Rickroll (should fail quality gate for AI topics)
+    # await agent.conduct_research("Machine Learning", "Advanced", [yt_url])
+
+    # Test Web
+    url = "https://en.wikipedia.org/wiki/Reinforcement_learning"
+    print("\nWeb Extractor:")
+    content = await agent.scraper.scrape_url(url)
+    print(content[:200] + "...")
+
+if __name__ == "__main__":
+    asyncio.run(main())

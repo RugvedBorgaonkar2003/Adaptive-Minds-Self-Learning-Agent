@@ -1,0 +1,32 @@
+[
+    {
+        "front": "What is the TCP/IP Model?",
+        "back": "It is a conceptual model of the Internet Protocol Suite.",
+        "concept": "TCP/IP Model",
+        "difficulty": "easy"
+    },
+    {
+        "front": "Which layer of the TCP/IP Model is responsible for end-to-end communication between running applications?",
+        "back": "The Application Layer.",
+        "concept": "TCP/IP Model",
+        "difficulty": "medium"
+    },
+    {
+        "front": "What is the primary function of the Internet Layer in the TCP/IP Model?",
+        "back": "It establishes inter-networking and defines the network routing mechanisms and the address space.",
+        "concept": "TCP/IP Model",
+        "difficulty": "medium"
+    },
+    {
+        "front": "Which layer of the TCP/IP Model is responsible for transferring data between hosts on the same network segment?",
+        "back": "The Link Layer.",
+        "concept": "TCP/IP Model",
+        "difficulty": "easy"
+    },
+    {
+        "front": "What is the name of the protocol that implements the Internet Layer in the OSI model?",
+        "back": "IP (Internet Protocol).",
+        "concept": "TCP/IP Model",
+        "difficulty": "hard"
+    }
+]

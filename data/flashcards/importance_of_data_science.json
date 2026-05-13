@@ -1,0 +1,32 @@
+[
+    {
+        "front": "Why is Python a popular choice for data science?",
+        "back": "It has libraries like NumPy and Pandas that make data processing and visualization efficient.",
+        "concept": "Importance of Data Science",
+        "difficulty": "easy"
+    },
+    {
+        "front": "What are some key reasons why data science is important?",
+        "back": "It helps make informed decisions, forecasts, and analyzes complex problems.",
+        "concept": "Importance of Data Science",
+        "difficulty": "medium"
+    },
+    {
+        "front": "Why is Python considered a core skill for modern analytics roles?",
+        "back": "Employers, universities, and global research bodies treat it as essential for data analysis and machine learning.",
+        "concept": "Importance of Data Science",
+        "difficulty": "medium"
+    },
+    {
+        "front": "What is the significance of data in modern IT systems?",
+        "back": "It drives decision-making, forecasting, and analysis for various needs.",
+        "concept": "Importance of Data Science",
+        "difficulty": "hard"
+    },
+    {
+        "front": "Why is Python a vital tool for data science?",
+        "back": "It can solve complex problems efficiently and has numerous libraries for data-focused tasks.",
+        "concept": "Importance of Data Science",
+        "difficulty": "hard"
+    }
+]
