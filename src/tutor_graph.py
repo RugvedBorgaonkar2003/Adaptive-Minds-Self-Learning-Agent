@@ -23,43 +23,55 @@ builder = StateGraph(TutorState)
 def progress_manager_node(state: TutorState) -> Dict[str, Any]:
     """
     Node 5: The Principal (Logic & Routing Tracker)
-    Checks if we need to advance the student based on latest interactions.
+
+    IMPORTANT: This node does NOT auto-advance concepts anymore.
+    Concept progression is now 100% controlled by the frontend — the user
+    must explicitly click "Next Concept" which calls /api/concept/advance.
+
+    This node only handles two special scenarios:
+      A) The student just passed the end-of-module test (name="module_passed")
+      B) The frontend explicitly advanced the concept (name="concept_advance")
+
+    For all normal chat messages, we stay on the same concept so the agent
+    can keep answering the student's questions until they feel ready to move on.
     """
     curriculum = state.get("curriculum", {})
     mod_idx = state.get("current_module_index", 0)
     con_idx = state.get("current_concept_index", 0)
     is_testing = state.get("is_testing_mode", False)
-    score = state.get("latest_score", 0)
     messages = state.get("messages", [])
-    failed = state.get("failed_attempts", 0)
-    
-    modules = curriculum.get("modules", [])
-    
-    # 1. SCENARIO A: The frontend UI just notified us the student passed the module test!
-    # (The api_server.py injects a system message with name="module_passed")
-    if len(messages) > 0 and getattr(messages[-1], "name", "") == "module_passed":
-        print("\n[Principal] Received notification that student passed the test. Proceeding to next module.")
-        return {} # State is already updated by api_server.py
 
-    # 2. SCENARIO B: We are teaching. The student just replied to the teacher.
-    # So we advance the concept index.
-    if not is_testing and len(messages) > 0 and getattr(messages[-1], "name", "") not in ["system_init", "module_passed"]:
+    modules = curriculum.get("modules", [])
+
+    last_msg_name = getattr(messages[-1], "name", "") if messages else ""
+
+    # SCENARIO A: The frontend just told us the student passed the module test.
+    if last_msg_name == "module_passed":
+        print("\n[Principal] Module passed signal received. State already updated by api_server.")
+        return {}
+
+    # SCENARIO B: The frontend explicitly advanced to the next concept.
+    if last_msg_name == "concept_advance":
+        print("\n[Principal] Concept advance signal received.")
         if mod_idx >= len(modules):
             return {"course_complete": True}
-            
+
         current_module = modules[mod_idx]
         concepts = current_module.get("concepts", [])
-        
+
         if con_idx + 1 >= len(concepts):
-            print("\n[Principal] Module concepts exhausted. Halting graph and instructing UI to show Quiz.")
+            print("\n[Principal] All concepts done. Switching to testing mode.")
             return {
-                "is_testing_mode": True, 
+                "is_testing_mode": True,
                 "messages": [AIMessage(content="You've completed all concepts in this module! I am generating your End-of-Module Test now... Good luck!")]
             }
         else:
-            print("\n[Principal] Advancing to next concept.")
+            print(f"\n[Principal] Advancing concept: {con_idx} → {con_idx + 1}")
             return {"current_concept_index": con_idx + 1}
-            
+
+    # DEFAULT: Normal student chat message.
+    # Stay on the SAME concept. Do not advance. Let the Teach node respond.
+    print(f"\n[Principal] Normal chat on concept {con_idx}. Staying on current concept.")
     return {}
 
 def route_next_step(state: TutorState) -> str:

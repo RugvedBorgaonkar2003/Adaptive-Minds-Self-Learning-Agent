@@ -1,6 +1,6 @@
 {
     "learning_velocity": "medium",
-    "boredom_score": 8,
+    "boredom_score": 0,
     "confusion_score": 0,
     "explanation_preference": "balance",
     "question_depth_trend": "shallow",
@@ -66,8 +66,16 @@
             "failed_attempts": 0,
             "concepts_count": 5,
             "passed_at": "2026-05-03 18:24"
+        },
+        {
+            "module_id": "m1",
+            "title": "Module 1: Introduction to Reinforcement Learning",
+            "score": 80,
+            "failed_attempts": 0,
+            "concepts_count": 3,
+            "passed_at": "2026-05-16 14:02"
         }
     ],
-    "streak": 7,
-    "average_mastery": 87.1
+    "streak": 8,
+    "average_mastery": 86.2
 }

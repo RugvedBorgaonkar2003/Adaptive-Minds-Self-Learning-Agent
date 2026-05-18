@@ -1,4 +1,5 @@
 import os
+import contextvars
 from dotenv import load_dotenv
 
 # CRITICAL: load_dotenv must be called before ANY LangChain imports
@@ -6,6 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from langchain_groq import ChatGroq
+
+# Context variable to hold the per-request API key for BYOK
+groq_api_key_var = contextvars.ContextVar("groq_api_key", default=None)
+
+def set_groq_api_key(key: str):
+    """Sets the API key for the current context (e.g. current request)."""
+    groq_api_key_var.set(key)
 
 # ── LangSmith Tracing Confirmation ──────────────────────────────────────────
 _tracing = os.getenv("LANGCHAIN_TRACING_V2", "false").lower()
@@ -23,9 +31,12 @@ def get_llm():
     Returns an instance of the Groq LLM (Llama 3.1 8B).
     Provides instant generation speeds with generous free-tier rate limits.
     """
-    api_key = os.getenv("GROQ_API_KEY")
+    # 1. Try to get it from the request context (User BYOK)
+    # 2. Fallback to environment variable
+    api_key = groq_api_key_var.get() or os.getenv("GROQ_API_KEY")
+    
     if not api_key:
-        print("Warning: GROQ_API_KEY is not set in the environment variables!")
+        print("Warning: GROQ_API_KEY is not set in context or environment variables!")
 
     llm = ChatGroq(
         model="llama-3.1-8b-instant",

@@ -16,8 +16,9 @@ if sys.platform == "win32":
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import uvicorn
-from fastapi import FastAPI, Form, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Form, File, UploadFile, HTTPException, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import shutil
@@ -48,6 +49,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from src.llm import set_groq_api_key
+
+class BYOKMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        api_key = request.headers.get("x-groq-api-key")
+        if api_key:
+            set_groq_api_key(api_key)
+        response = await call_next(request)
+        return response
+
+app.add_middleware(BYOKMiddleware)
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -72,6 +85,12 @@ class ModuleCompleteRequest(BaseModel):
     current_module_index: int
     score: int
     failed_attempts: int
+
+class ConceptAdvanceRequest(BaseModel):
+    session_id: str
+    curriculum: dict
+    current_module_index: int
+    current_concept_index: int
 
 @app.get("/api/debug_loop")
 async def debug_loop():
@@ -99,7 +118,10 @@ async def cleanup_job(job_id: str, delay_seconds: int = 300):
         print(f"Cleaning up resources for job: {job_id}")
         del job_store[job_id]
 
-async def _execute_agent_pipeline_async(job_id: str, topic: str, level: str, goal_type: str, sources: List[str]):
+async def _execute_agent_pipeline_async(job_id: str, topic: str, level: str, goal_type: str, sources: List[str], api_key: Optional[str] = None):
+    if api_key:
+        set_groq_api_key(api_key)
+        
     print(f"\n[Job {job_id}] Phase 1.5: Acquiring Knowledge...")
     job_store[job_id]['status'] = 'running'
     job_store[job_id]['message'] = 'Acquiring knowledge from sources...'
@@ -174,7 +196,8 @@ async def process_onboarding(
     level: str = Form(...),
     reason: str = Form(...),
     source_method: str = Form(...),
-    files: Optional[List[UploadFile]] = File(None)
+    files: Optional[List[UploadFile]] = File(None),
+    x_groq_api_key: Optional[str] = Header(None)
 ):
     saved_files = []
     
@@ -206,7 +229,7 @@ async def process_onboarding(
         'curriculum': None
     }
     
-    background_tasks.add_task(execute_agent_pipeline_sync, job_id, topic, level, reason, saved_files)
+    background_tasks.add_task(execute_agent_pipeline_sync, job_id, topic, level, reason, saved_files, x_groq_api_key)
     
     return {
         "status": "success",
@@ -276,6 +299,39 @@ async def process_chat(request: ChatRequest):
         "course_complete": new_state.get("course_complete")
     }
 
+@app.get("/api/notes/all")
+async def get_all_notes():
+    """Returns all generated module notes so the frontend Notes tab can display them."""
+    import re as _re
+    notes_dir = "./data/notes"
+    if not os.path.exists(notes_dir):
+        return {"status": "success", "notes": []}
+
+    notes = []
+    for f in sorted(os.listdir(notes_dir), reverse=True):
+        if not f.endswith(".md"):
+            continue
+        filepath = os.path.join(notes_dir, f)
+        try:
+            with open(filepath, "r", encoding="utf-8") as fh:
+                content = fh.read()
+            # Extract a human title from the first # heading
+            title_match = _re.search(r'^#\s+(.+)', content, _re.MULTILINE)
+            title = title_match.group(1).strip() if title_match else f.replace("_", " ").replace(".md", "")
+            # Parse timestamp out of filename (format: slug_YYYYMMDD_HHMM.md)
+            ts_match = _re.search(r'_(\d{8}_\d{4})\.md$', f)
+            timestamp = ts_match.group(1) if ts_match else ""
+            notes.append({
+                "filename": f,
+                "title": title,
+                "timestamp": timestamp,
+                "content": content
+            })
+        except Exception:
+            continue
+
+    return {"status": "success", "notes": notes}
+
 @app.get("/api/notes/{module_title}")
 async def get_notes(module_title: str):
     import re
@@ -301,6 +357,28 @@ async def get_notes(module_title: str):
         content = f.read()
         
     return {"status": "success", "content": content}
+
+@app.get("/api/reports/all")
+async def get_all_reports():
+    """Returns all generated module reports so the frontend Reports tab can display them."""
+    import json as _json
+    reports_dir = "./data/reports"
+    if not os.path.exists(reports_dir):
+        return {"status": "success", "reports": []}
+
+    reports = []
+    for f in sorted(os.listdir(reports_dir), reverse=True):
+        if not f.endswith(".json"):
+            continue
+        filepath = os.path.join(reports_dir, f)
+        try:
+            with open(filepath, "r", encoding="utf-8") as fh:
+                data = _json.load(fh)
+            reports.append({"filename": f, "report": data})
+        except Exception:
+            continue
+
+    return {"status": "success", "reports": reports}
 
 @app.get("/api/reports/{module_title}")
 async def get_report(module_title: str):
@@ -328,12 +406,59 @@ async def get_report(module_title: str):
         
     return {"status": "success", "report": data}
 
+
+@app.get("/api/flashcards/all")
+async def get_all_flashcard_decks():
+    """Returns all saved flashcard decks so the FlashcardsView can list them."""
+    import json as _json
+    fc_dir = "./data/flashcards"
+    if not os.path.exists(fc_dir):
+        return {"status": "success", "decks": []}
+
+    decks = []
+    for f in sorted(os.listdir(fc_dir), reverse=True):
+        if not f.endswith(".json"):
+            continue
+        filepath = os.path.join(fc_dir, f)
+        try:
+            with open(filepath, "r", encoding="utf-8") as fh:
+                cards = _json.load(fh)
+            concept_name = f.replace(".json", "").replace("_", " ").title()
+            # Use the concept field from the first card if available
+            if cards and isinstance(cards, list) and cards[0].get("concept"):
+                concept_name = cards[0]["concept"]
+            decks.append({
+                "filename": f,
+                "concept": concept_name,
+                "card_count": len(cards),
+                "cards": cards
+            })
+        except Exception:
+            continue
+
+    return {"status": "success", "decks": decks}
+
+@app.get("/api/flashcards/deck/{concept}")
+async def get_flashcard_deck(concept: str):
+    import re
+    fc_dir = "./data/flashcards"
+    safe_name = re.sub(r'[^\w\s-]', '', concept).strip().lower().replace(" ", "_")
+    filepath = os.path.join(fc_dir, f"{safe_name}.json")
+    
+    if not os.path.exists(filepath):
+        return {"status": "error", "message": f"Flashcards for '{concept}' not found."}
+        
+    import json
+    with open(filepath, "r", encoding="utf-8") as f:
+        cards = json.load(f)
+    return {"status": "success", "cards": cards}
+
 @app.post("/api/flashcards")
 async def generate_flashcards(request: FlashcardRequest):
     try:
         flash_gen = FlashcardGenerator()
         cards = flash_gen.generate(concept=request.concept, num_cards=5)
-        return {"status": "success", "cards": cards}
+        return {"status": "success", "cards": cards, "concept": request.concept}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -402,6 +527,42 @@ async def complete_module(request: ModuleCompleteRequest):
         "next_module_index": next_mod_idx,
         "notes_path": notes_path,
         "report_path": report_path
+    }
+
+@app.post("/api/concept/advance")
+async def advance_concept(request: ConceptAdvanceRequest):
+    """
+    Called by the frontend when the user explicitly clicks 'Next Concept'.
+    Injects a concept_advance signal into the LangGraph so progress_manager_node
+    safely increments the concept index and the agent teaches the new concept.
+    """
+    config = {"configurable": {"thread_id": request.session_id}}
+
+    state_update = {
+        "curriculum": request.curriculum,
+        "current_module_index": request.current_module_index,
+        "current_concept_index": request.current_concept_index,
+        "is_testing_mode": False,
+        # This named message is the signal that progress_manager_node listens for
+        "messages": [HumanMessage(content="I'm ready to move on to the next concept.", name="concept_advance")]
+    }
+
+    new_state = tutor_graph.invoke(state_update, config=config)
+
+    messages = new_state.get("messages", [])
+    ai_message = ""
+    for msg in reversed(messages):
+        if msg.type == "ai":
+            ai_message = msg.content
+            break
+
+    return {
+        "status": "success",
+        "ai_response": ai_message,
+        "current_module_index": new_state.get("current_module_index"),
+        "current_concept_index": new_state.get("current_concept_index"),
+        "is_testing_mode": new_state.get("is_testing_mode"),
+        "course_complete": new_state.get("course_complete")
     }
 
 if __name__ == "__main__":
