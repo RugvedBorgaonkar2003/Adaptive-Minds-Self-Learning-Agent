@@ -74,8 +74,16 @@
             "failed_attempts": 0,
             "concepts_count": 3,
             "passed_at": "2026-05-16 14:02"
+        },
+        {
+            "module_id": "m1",
+            "title": "Module 1: Introduction to Python",
+            "score": 80,
+            "failed_attempts": 0,
+            "concepts_count": 6,
+            "passed_at": "2026-05-18 16:54"
         }
     ],
-    "streak": 8,
-    "average_mastery": 86.2
+    "streak": 9,
+    "average_mastery": 85.6
 }
