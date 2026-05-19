@@ -2,8 +2,7 @@ import os
 import contextvars
 from dotenv import load_dotenv
 
-# CRITICAL: load_dotenv must be called before ANY LangChain imports
-# so that LangSmith tracing environment variables are present at init time.
+# Load environment variables
 load_dotenv()
 
 from langchain_groq import ChatGroq
@@ -15,16 +14,7 @@ def set_groq_api_key(key: str):
     """Sets the API key for the current context (e.g. current request)."""
     groq_api_key_var.set(key)
 
-# ── LangSmith Tracing Confirmation ──────────────────────────────────────────
-_tracing = os.getenv("LANGCHAIN_TRACING_V2", "false").lower()
-_ls_key  = os.getenv("LANGCHAIN_API_KEY", "")
-_project = os.getenv("LANGCHAIN_PROJECT", "default")
 
-if _tracing == "true" and _ls_key:
-    print(f"[LangSmith] Tracing ENABLED -> Project: '{_project}'")
-else:
-    print("[WARN] LangSmith tracing is OFF. Set LANGCHAIN_TRACING_V2=true and LANGCHAIN_API_KEY in .env to enable.")
-# ────────────────────────────────────────────────────────────────────────────
 
 def get_llm():
     """
