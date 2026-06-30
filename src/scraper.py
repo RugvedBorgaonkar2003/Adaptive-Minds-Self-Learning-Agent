@@ -1,4 +1,7 @@
 import os
+import sys
+# Ensure project root is in path for direct execution (e.g. running src/scraper.py)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import re
 import json
 from typing import Optional, Dict, List
@@ -8,7 +11,7 @@ from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_core.messages import SystemMessage, HumanMessage
 import asyncio
 
-from src.llm import get_llm
+from .llm import get_llm
 
 class WebScraper:
     def __init__(self):
@@ -22,7 +25,9 @@ class WebScraper:
         print(f"Scraping URL: {url}")
         try:
             async with AsyncWebCrawler(verbose=True) as crawler:
-                result = await crawler.arun(url=url)
+                # Option B: Manual Sniper. Explicitly remove junk elements before reading text.
+                junk_tags = ['nav', 'aside', 'footer', 'header', 'iframe', '.cookie-banner', '.adsbygoogle', '#sidebar', '.sidebar']
+                result = await crawler.arun(url=url, excluded_tags=junk_tags)
                 # The markdown attribute contains the extracted content
                 return result.markdown if result else ""
         except Exception as e:
@@ -50,13 +55,16 @@ class WebScraper:
 
         print(f"Fetching transcript for YouTube video ID: {video_id}")
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            # Find the first available transcript
-            transcript = next(iter(transcript_list))
-            fetched_transcript = transcript.fetch()
+            # get_transcript directly returns the list of text dictionaries (defaults to English)
+            fetched_transcript = YouTubeTranscriptApi.get_transcript(video_id)
             
             # Combine all text snippets into a single string
             full_transcript = " ".join([entry['text'] for entry in fetched_transcript])
+            
+            if len(full_transcript) < 500:
+                print(f"YouTube transcript rejected (length: {len(full_transcript)} < 500 chars). Video is likely too short.")
+                return ""
+                
             return full_transcript
         except Exception as e:
             print(f"Error fetching transcript: {e}")
@@ -81,8 +89,9 @@ class ResearchAgent:
         """
         Grades scraped content for relevance and substance using the LLM.
         """
-        if not content or len(content) < 100:
+        if not content or len(content) < 500:
              # Too short to be a meaningful source
+             print(f"Source rejected by Layer 2 Heuristics (length: {len(content) if content else 0})")
              return False
              
         # Instead of just the first 2000 chars, take a representative sample 
@@ -99,10 +108,17 @@ class ResearchAgent:
         else:
             preview = content
         
-        prompt = f"""Evaluate this raw web scrape for learning about: '{topic}' (Level: {level}).
+        prompt = f"""You are a Curriculum Quality Gatekeeper.
+Evaluate this raw web scrape for learning about: '{topic}' at a '{level}' level.
 
 IGNORE website garbage (navigation menus, cookie banners, footers).
-Return {{"is_valid": true}} ONLY IF you find at least one substantive, educational paragraph explaining the core topic. Otherwise, return {{"is_valid": false}}.
+Grade the source from 1 to 10 on the following criteria. To pass, the overall score MUST be 6 or higher. It does NOT have to be perfect, just useful enough to learn from.
+1. Relevance: Does it contain useful information about the topic?
+2. Depth: Is it somewhat appropriate for a '{level}' level?
+3. Authority: Is it educational and objective?
+
+Return ONLY a JSON object with:
+{{"score": <int>, "reason": "<short explanation>", "is_valid": <boolean true if score >= 6>}}
 
 Text Snippet:
 {preview}
@@ -136,18 +152,27 @@ Text Snippet:
         Checks if current knowledge is enough to teach the topic at the desired level.
         If not, generates search queries to find missing information.
         """
+        # Extract an outline (headings) to avoid token limits
+        headings = [line for line in current_knowledge.split('\n') if line.strip().startswith('#')]
+        outline = "\n".join(headings)
+        if len(outline) < 100:
+            outline = current_knowledge[:4000] # Fallback if no markdown headings
+            
         prompt = f"""You are a Curriculum Director. 
 We need to teach a student about '{topic}' at a '{level}' level.
-Review the knowledge we have gathered so far. 
+Review the outline of the knowledge we have gathered so far. 
 
 Is this knowledge sufficient to create a comprehensive curriculum for '{level}' level?
 If YES: return {{"is_sufficient": true, "queries": []}}
-If NO: return {{"is_sufficient": false, "queries": ["query1", "query2"]}} where queries are DuckDuckGo search strings to find the missing advanced/specific information. Generate 1 to 3 targeted queries.
+If NO: return {{"is_sufficient": false, "queries": ["query1", "query2"]}} 
+Generate 1 to 3 targeted DuckDuckGo search queries to find the missing advanced/specific information.
+IMPORTANT: Dynamically target authoritative domains based on the topic. 
+For example, for coding append 'site:react.dev' or 'site:github.com'. For finance append 'site:investopedia.com', etc.
 
 Return ONLY valid JSON.
 
-Current Knowledge:
-{current_knowledge[:8000]}... (truncated)
+Current Knowledge Outline:
+{outline}
 """
         try:
              response = self.llm.invoke([SystemMessage(content="You output ONLY valid JSON."), HumanMessage(content=prompt)])
@@ -165,14 +190,22 @@ Current Knowledge:
         """
         Uses DuckDuckGo to search the web and extracts URLs from the results.
         """
+        blacklist = ["pinterest.com", "quora.com", "medium.com/tag", "coursehero.com", "chegg.com"]
         print(f"Searching web for: '{query}'")
         try:
             results_str = self.search_tool.invoke(query)
             # DuckDuckGoSearchResults returns a string, e.g., "[snippet: ..., title: ..., link: https://...], [...]"
             # We need to extract the links.
             urls = re.findall(r'link:\s*(https?://[^\],]+)', results_str)
+            
+            # Filter blacklist
+            filtered_urls = []
+            for u in urls:
+                if not any(b in u.lower() for b in blacklist):
+                    filtered_urls.append(u)
+                    
             # Remove duplicates and limit to top 3 to avoid excessive scraping
-            unique_urls = list(dict.fromkeys(urls))[:4]
+            unique_urls = list(dict.fromkeys(filtered_urls))[:4]
             print(f"Found URLs: {unique_urls}")
             return unique_urls
         except Exception as e:
@@ -181,7 +214,7 @@ Current Knowledge:
 
     async def conduct_research(self, topic: str, level: str, provided_urls: List[str] = None) -> str:  #we used none here for Provided_urls to prevent crash
         """
-        Main orchestration loop for autonomous research.
+        Main orchestration loop for autonomous research using Query Fanout.
         """
         if provided_urls is None:
             provided_urls = []
@@ -190,7 +223,7 @@ Current Knowledge:
         
         knowledge_base = ""
         processed_urls = set()
-        MAX_SCRAPE_LIMIT = 6  # Hard cap on total crawl4ai scrapes per session
+        MAX_SCRAPE_LIMIT = 8  # Increased slightly because of fanout speed
         scrape_count = 0
         
         # Step 1: Extract from provided sources
@@ -208,7 +241,7 @@ Current Knowledge:
                  knowledge_base += f"\n\nSource: {url}\n{content}\n"
             processed_urls.add(url)
             
-        # Step 2 & 3: Evaluate Sufficiency & Autonomous Search Loop
+        # Step 2 & 3: Evaluate Sufficiency & Autonomous Fanout Loop
         max_search_loops = 2
         loops = 0
         
@@ -231,33 +264,58 @@ Current Knowledge:
                  
             print(f"Knowledge insufficient. Generated search queries: {queries}")
             
-            new_content_added = False
-            for query in queries:
-                new_urls = self.search_web(query)
-                for url in new_urls:
-                    if url in processed_urls: continue
-                    if scrape_count >= MAX_SCRAPE_LIMIT:
-                        print(f"Scrape limit ({MAX_SCRAPE_LIMIT}) reached mid-search. Stopping.")
-                        break
-                    
-                    content = await self.scraper.extract_source(url)
-                    scrape_count += 1
-                    
-                    # Quality Gate!
-                    if self.evaluate_source_quality(content, topic, level):
-                        print(f"Source {url} passed quality gate. Adding to knowledge base.")
-                        knowledge_base += f"\n\nSource: {url}\n{content}\n"
-                        new_content_added = True
-                    else:
-                        print(f"Source {url} rejected by quality gate.")
-                        
-                    processed_urls.add(url)
+            # ---------------------------------------------------------
+            # QUERY FANOUT: Parallel Search
+            # ---------------------------------------------------------
+            print(f"Executing Fanout Search for {len(queries)} queries concurrently...")
+            search_tasks = [asyncio.to_thread(self.search_web, query) for query in queries]
+            search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+            
+            new_urls = []
+            for result_list in search_results:
+                if isinstance(result_list, list):
+                    for url in result_list:
+                        if url not in processed_urls and url not in new_urls:
+                            new_urls.append(url)
+                            
+            if not new_urls:
+                print("Fanout Search yielded no new URLs. Stopping research loop.")
+                break
                 
-                if scrape_count >= MAX_SCRAPE_LIMIT:
-                    break
+            print(f"Fanout Search pooled {len(new_urls)} unique URLs.")
+            
+            # We don't want to scrape 20 URLs if we only need a few more to hit MAX_SCRAPE_LIMIT
+            urls_to_scrape = new_urls[:(MAX_SCRAPE_LIMIT - scrape_count)]
+            if not urls_to_scrape:
+                break
+                
+            # ---------------------------------------------------------
+            # QUERY FANOUT: Parallel Scrape
+            # ---------------------------------------------------------
+            print(f"Executing Fanout Scrape for {len(urls_to_scrape)} URLs concurrently...")
+            scrape_tasks = [self.scraper.extract_source(url) for url in urls_to_scrape]
+            scraped_contents = await asyncio.gather(*scrape_tasks, return_exceptions=True)
+            scrape_count += len(urls_to_scrape)
+            
+            # Quality Gate processing (sequential to prevent LLM rate limits)
+            new_content_added = False
+            for url, content in zip(urls_to_scrape, scraped_contents):
+                processed_urls.add(url)
+                if isinstance(content, Exception):
+                    print(f"Scrape failed for {url}: {content}")
+                    continue
+                if not content:
+                    continue
+                    
+                if self.evaluate_source_quality(content, topic, level):
+                    print(f"🟢 Source {url} passed quality gate. Adding to knowledge base.")
+                    knowledge_base += f"\n\nSource: {url}\n{content}\n"
+                    new_content_added = True
+                else:
+                    print(f"🔴 Source {url} rejected by quality gate.")
                     
             if not new_content_added:
-                print("Search yielded no new valid information. Stopping research loop.")
+                print("Fanout yielded no new valid information. Stopping research loop.")
                 break
                     
             loops += 1

@@ -27,29 +27,51 @@ import uuid
 import asyncio
 from datetime import datetime
 
-from src.orchestrator import KnowledgeOrchestrator
-from src.processor import DocumentProcessor
-from src.vector_db import VectorDBManager
-from src.curriculum_gen import CurriculumGenerator
-from src.tutor_graph import tutor_graph
+from .orchestrator import KnowledgeOrchestrator
+from .processor import DocumentProcessor
+from .vector_db import VectorDBManager
+from .curriculum_gen import CurriculumGenerator
+from .tutor_graph import tutor_graph
 from langchain_core.messages import HumanMessage, AIMessage
-from src.flashcard_gen import FlashcardGenerator
-from src.test_gen import ModuleTestGenerator
-from src.notes_gen import NotesGenerator
-from src.report_gen import ReportGenerator
-from src.student_profile import StudentProfileManager
+from .flashcard_gen import FlashcardGenerator
+from .test_gen import ModuleTestGenerator
+from .notes_gen import NotesGenerator
+from .report_gen import ReportGenerator
+from .student_profile import StudentProfileManager
+from .llm import set_groq_api_key
 
 app = FastAPI(title="Adaptive Minds API")
 
+# Configure CORS
+origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8000",
+]
+
+# Allow custom Vercel URLs or other origins from environment variables
+frontend_url = os.environ.get("FRONTEND_URL")
+cors_origins = os.environ.get("CORS_ORIGINS")
+
+if cors_origins:
+    for origin in cors_origins.split(","):
+        origins.append(origin.strip())
+elif frontend_url:
+    for origin in frontend_url.split(","):
+        origins.append(origin.strip())
+else:
+    # If no FRONTEND_URL or CORS_ORIGINS is provided, allow all for default ease of setup
+    origins.append("*")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=origins,
+    allow_credentials=True if "*" not in origins else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from src.llm import set_groq_api_key
+
 
 class BYOKMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -566,5 +588,7 @@ async def advance_concept(request: ConceptAdvanceRequest):
     }
 
 if __name__ == "__main__":
-    print("Starting FastAPI server on http://localhost:8000")
-    uvicorn.run("src.api_server:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    is_prod = "PORT" in os.environ
+    print(f"Starting FastAPI server on http://0.0.0.0:{port} (prod={is_prod})")
+    uvicorn.run("src.api_server:app", host="0.0.0.0", port=port, reload=not is_prod)

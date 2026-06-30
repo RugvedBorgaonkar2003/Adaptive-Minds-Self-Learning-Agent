@@ -1,4 +1,5 @@
 import uuid
+import datetime
 from typing import List, Dict, Any
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
@@ -59,17 +60,22 @@ class DocumentProcessor:
             # --- Formatting Output ---
             # Now we combine the Markdown metadata with the Orchestrator metadata
             for i, doc in enumerate(chunked_docs):
-                # Inherit all the awesome metadata from Phase 1
+                # Inherit metadata from Phase 1 and aggressively sanitize 'None' to ''
+                # to prevent ChromaDB validation crashes.
                 combined_metadata = {
-                    "source_id": source_id,
-                    "url": source.get("url"),
-                    "type": source.get("type"),
-                    "title": source.get("title"),
-                    "origin": source.get("origin")
+                    "source_id": source_id or "",
+                    "url": source.get("url") or "",
+                    "type": source.get("type") or "",
+                    "title": source.get("title") or "",
+                    "origin": source.get("origin") or "",
+                    "timestamp": datetime.datetime.now().isoformat()
                 }
                 
                 # Merge in the Markdown Header metadata (if any headers existed)
-                combined_metadata.update(doc.metadata)
+                # Safely checking if metadata exists to prevent the 'No Header' PDF edge case crash
+                if hasattr(doc, 'metadata') and isinstance(doc.metadata, dict):
+                    safe_doc_metadata = {k: (v if v is not None else "") for k, v in doc.metadata.items()}
+                    combined_metadata.update(safe_doc_metadata)
 
                 chunk_entry = {
                     # Every chunk gets a unique ID, but references its parent source_id

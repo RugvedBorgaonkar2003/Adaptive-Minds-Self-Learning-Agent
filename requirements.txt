@@ -23,3 +23,5 @@ python-dotenv
 python-multipart
 uvicorn
 youtube-transcript-api
+playwright
+sentence-transformers

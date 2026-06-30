@@ -1,4 +1,5 @@
 import os
+import re
 from typing import List, Dict, Any
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -9,9 +10,24 @@ class VectorDBManager:
     Handles the initialization, insertion, and retrieval of knowledge from the 
     local ChromaDB instance, serving as the Agent's Long-Term Memory.
     """
-    def __init__(self, session_id: str = "default_session", persist_directory: str = "./data/chroma_db"):
+    
+    def _sanitize_collection_name(self, name: str) -> str:
+        """
+        ChromaDB collection names must be 3-63 characters, start/end with an alphanumeric,
+        and contain only alphanumeric characters, underscores, or hyphens.
+        """
+        # Replace spaces and invalid chars with underscores
+        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+        # Ensure it doesn't start/end with punctuation
+        safe_name = safe_name.strip('_-')
+        # Ensure length
+        if len(safe_name) < 3:
+            safe_name = safe_name.ljust(3, '_')
+        return safe_name[:63].lower()
+
+    def __init__(self, topic_name: str = "general_knowledge", persist_directory: str = "./data/chroma_db"):
         self.persist_directory = persist_directory
-        self.session_id = session_id
+        self.collection_name = self._sanitize_collection_name(topic_name)
         os.makedirs(self.persist_directory, exist_ok=True)
         
         # We use a highly efficient, CPU-friendly open-source embedding model (all-MiniLM-L6-v2)
@@ -19,13 +35,13 @@ class VectorDBManager:
         print("Initializing Embedding Model...")
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
         
-        # Connect to (or create) the local persistent ChromaDB
+        # Connect to (or create) the local persistent ChromaDB using the Topic as the Collection Folder
         self.vector_store = Chroma(
-            collection_name=self.session_id,
+            collection_name=self.collection_name,
             embedding_function=self.embeddings,
             persist_directory=self.persist_directory
         )
-        print(f"Connected to ChromaDB Collection: '{self.session_id}' at {self.persist_directory}")
+        print(f"Connected to ChromaDB Collection: '{self.collection_name}' at {self.persist_directory}")
 
     def insert_chunks(self, chunks: List[Dict[str, Any]]) -> bool:
         """

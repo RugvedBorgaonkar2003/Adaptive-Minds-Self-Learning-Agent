@@ -1,12 +1,17 @@
+import sys
 import os
 import asyncio
 import uuid
+import urllib.parse
 from typing import List, Dict, Optional, Any
 
+# Ensure project root is in path for direct execution
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Import our individual extractors
-from src.scraper import WebScraper, ResearchAgent
-from src.pdf_parser import PDFParser
-from src.arxiv_searcher import ArxivSearcher
+from .scraper import WebScraper, ResearchAgent
+from .pdf_parser import PDFParser
+from .arxiv_searcher import ArxivSearcher
 
 class KnowledgeOrchestrator:
     """
@@ -21,10 +26,17 @@ class KnowledgeOrchestrator:
         self.arxiv_searcher = ArxivSearcher()
         self.research_agent = ResearchAgent()
 
+    def _normalize_url(self, url: str) -> str:
+        """Normalizes URL for accurate duplicate checking."""
+        parsed = urllib.parse.urlparse(url.lower())
+        netloc = parsed.netloc.replace('www.', '')
+        path = parsed.path.rstrip('/')
+        return f"{parsed.scheme}://{netloc}{path}"
+
     def _categorize_source(self, source: str) -> str:
         """Helper to determine what kind of source we are looking at."""
         source_lower = source.lower()
-        if (source_lower.endswith('.pdf') or os.path.exists(source)) and not source_lower.startswith('http'):
+        if source_lower.endswith('.pdf') and os.path.exists(source) and not source_lower.startswith('http'):
             return "local_pdf"
         elif "youtube.com" in source_lower or "youtu.be" in source_lower:
             return "youtube"
@@ -53,7 +65,7 @@ class KnowledgeOrchestrator:
             content = ""
             try:
                 if source_type == "youtube":
-                    content = self.web_scraper.get_youtube_transcript(source)
+                    content = await asyncio.to_thread(self.web_scraper.get_youtube_transcript, source)
                     status = "passed"
                     if extracted_callback: extracted_callback(source)
                 elif source_type == "web":
@@ -61,8 +73,10 @@ class KnowledgeOrchestrator:
                     status = "passed"
                     if extracted_callback: extracted_callback(source)
                 elif source_type == "local_pdf":
-                    if os.path.exists(source):
-                        content = self.pdf_parser.parse_pdf(source)
+                    if "advanced" not in level.lower():
+                        print(f"Warning: PDF sources are only permitted in the 'advanced' level. Skipping {source}.")
+                    elif os.path.exists(source):
+                        content = await asyncio.to_thread(self.pdf_parser.parse_pdf, source)
                         status = "passed"
                         if extracted_callback: extracted_callback(source)
                     else:
@@ -88,7 +102,11 @@ class KnowledgeOrchestrator:
             print(f"\n[Advanced Level Detected] Automatically pulling supplementary peer-reviewed papers for '{topic}'...")
             
             # Fetch the top 2 highly relevant papers
-            downloaded_papers = self.arxiv_searcher.search_and_download(topic=topic, max_results=2)
+            try:
+                downloaded_papers = await asyncio.to_thread(self.arxiv_searcher.search_and_download, topic, 2)
+            except Exception as e:
+                print(f"Warning: Failed to fetch Arxiv papers for '{topic}'. Error: {e}")
+                downloaded_papers = []
             
             # We must process these newly downloaded PDFs
             for paper_meta in downloaded_papers:
@@ -96,17 +114,20 @@ class KnowledgeOrchestrator:
                 status = "failed"
                 content = ""
                 if os.path.exists(pdf_path):
-                    raw_content = self.pdf_parser.parse_pdf(pdf_path)
-                    # We prepend the metadata to the markdown so the LLM has context
-                    content = (
-                        f"# Title: {paper_meta['title']}\n"
-                        f"**Authors:** {', '.join(paper_meta['authors'])}\n"
-                        f"**Summary:** {paper_meta['summary']}\n\n"
-                        f"## Paper Content\n"
-                        f"{raw_content}"
-                    )
-                    status = "passed"
-                    if extracted_callback: extracted_callback(paper_meta.get("pdf_url", pdf_path))
+                    try:
+                        raw_content = await asyncio.to_thread(self.pdf_parser.parse_pdf, pdf_path)
+                        # We prepend the metadata to the markdown so the LLM has context
+                        content = (
+                            f"# Title: {paper_meta['title']}\n"
+                            f"**Authors:** {', '.join(paper_meta['authors'])}\n"
+                            f"**Summary:** {paper_meta['summary']}\n\n"
+                            f"## Paper Content\n"
+                            f"{raw_content}"
+                        )
+                        status = "passed"
+                        if extracted_callback: extracted_callback(paper_meta.get("pdf_url", pdf_path))
+                    except Exception as e:
+                        print(f"Warning: Failed to parse downloaded Arxiv PDF '{pdf_path}'. Error: {e}")
                 else:
                     print(f"Warning: Downloaded arxiv paper not found at {pdf_path}")
                 
@@ -136,7 +157,7 @@ class KnowledgeOrchestrator:
                 print(f"\n[Iteration {iteration+1}] No knowledge yet. Starting autonomous search...")
             else:
                 print(f"\n[Iteration {iteration+1}] Evaluating if current knowledge base is sufficient for {level} level...")
-                eval_result = self.research_agent.evaluate_knowledge_sufficiency(current_knowledge_text, topic, level)
+                eval_result = await asyncio.to_thread(self.research_agent.evaluate_knowledge_sufficiency, current_knowledge_text, topic, level)
                 
                 if eval_result.get("is_sufficient", True):
                     print(f"✅ AI determined the knowledge base is now SUFFICIENT for '{topic}' at the {level} level!")
@@ -149,10 +170,11 @@ class KnowledgeOrchestrator:
             if needs_supplementation:
                 found_urls = []
                 for query in queries_to_run:
-                    urls = self.research_agent.search_web(query)
+                    urls = await asyncio.to_thread(self.research_agent.search_web, query)
                     for u in urls:
-                        if u not in found_urls and not any(k.get("url") == u for k in extracted_knowledge):
-                            found_urls.append(u)
+                        norm_u = self._normalize_url(u)
+                        if norm_u not in found_urls and not any(self._normalize_url(k.get("url", "")) == norm_u for k in extracted_knowledge):
+                            found_urls.append(norm_u)
                 
                 if not found_urls:
                     print("Could not find any new URLs to scrape. Ending search.")
@@ -163,12 +185,15 @@ class KnowledgeOrchestrator:
                 
                 # Scrape up to 2 high-quality sources per iteration, then pause to re-evaluate the whole base
                 for url in found_urls:
+                    # original URL could have query params stripped in normalization, so it's safer to scrape the original URL or normalized?
+                    # The normalized url is safe for most.
                     status = "failed"
                     content = ""
                     try:
                         content = await self.web_scraper.scrape_url(url)
                         # Agent-sourced links DO go through the strict quality gate
-                        if self.research_agent.evaluate_source_quality(content, topic, level):
+                        is_valid = await asyncio.to_thread(self.research_agent.evaluate_source_quality, content, topic, level)
+                        if is_valid:
                             status = "passed"
                             print(f"🟢 Source {url} PASSED quality gate.")
                             if extracted_callback: extracted_callback(url)
@@ -199,27 +224,3 @@ class KnowledgeOrchestrator:
         
         print("\n--- Knowledge Gathering Complete ---")
         return extracted_knowledge
-
-
-# Example usage (for testing)
-if __name__ == "__main__":
-    async def run_test():
-        orchestrator = KnowledgeOrchestrator()
-        
-        # Simulate an onboarding state
-        topic = "Proximal Policy Optimization"
-        level = "advanced"
-        user_sources = [
-            "https://www.youtube.com/watch?v=5P7I-xPq8u8", # A known PPO explanation video
-            # Note: you would add local path to a PDF here if you had one for testing
-        ]
-        
-        results = await orchestrator.run(topic, level, user_sources)
-        
-        for item in results:
-            content = item.get("content", "")
-            print(f"\nSource URL: {item['url']} | Status: {item['status']}")
-            # Print just the first 300 characters to verify it worked without flooding terminal
-            print(f"Extracted Length: {len(content)} characters. Preview: {content[:300]}...\n")
-
-    asyncio.run(run_test())

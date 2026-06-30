@@ -1,0 +1,82 @@
+================================================================================
+CHANGELOG: onboarding.py
+================================================================================
+
+--- BEFORE ---
+- Contained a full LangGraph setup (`StateGraph(OnboardingState)`) with:
+  - `interview_node`: Conversational LLM node that checked which of the 4 variables (topic, level, goal_type, sources) were missing and queried the user.
+  - `extraction_node`: Silent LLM node that extracted data using complex, error-prone JSON instruction prompts and executed `json.loads(raw_content)` with regex-like sanitization.
+- Contained `run_onboarding()` which ran an interactive command line loop using `input()`.
+- Had an API helper `run_onboarding_api(request)` that mapped a Pydantic object but did no safety validation for missing required inputs or `NoneType` values inside `sources_list` (which caused crashes if `None` was sent).
+
+--- AFTER ---
+- Completely removed LangGraph, LangChain imports, and LLM-based interviewing/extraction nodes, eliminating latency and LLM JSON parsing hallucination bugs.
+- Deleted the unused command line helper `run_onboarding()`.
+- Refactored `run_onboarding_api()` to perform clean, deterministic Python validations:
+  - Validates that the mandatory fields (`topic`, `level`, `goal_type`) are not empty or blank.
+  - Gracefully processes `sources_list` using python checks (filters out empty or spaces-only items and safely handles `None`).
+  - Correctly sets `sources_uploaded` to `False` if no valid sources are present, prompting downstream components to trigger autonomous self-scraping/research.
+
+
+================================================================================
+CHANGELOG: orchestrator.py & scraper.py
+================================================================================
+
+--- BEFORE ---
+- **Blocking I/O**: Heavy synchronous parsing tasks (PDF extraction, YouTube fetching, Arxiv downloads) blocked the main FastAPI async loop.
+- **Silent Failures**: Arxiv downloads failed silently if API limits were hit or the download didn't finish before the parser kicked in.
+- **URL Duplicates**: The scraper often scraped the same URL multiple times (e.g. `example.com` vs `example.com/`).
+- **PDF Edge Cases**: Allowed any local file not starting with `http` to trigger the PDF parser, leading to crashes on `.txt` or `.docx` files.
+- **Weak Quality Gate**: The AI research agent's quality check was loose (just a true/false evaluation) and allowed SEO spam and irrelevant domains into the knowledge base.
+- **Token Limits**: Evaluated knowledge sufficiency by sending the raw massive text chunks to the LLM, breaking token limits quickly.
+- **Hardcoded Test Bloat**: Kept development/testing scenarios bundled inside `orchestrator.py`.
+
+--- AFTER ---
+- **Non-Blocking Architecture**: Wrapped all synchronous functions (like `self.pdf_parser.parse_pdf` and `self.arxiv_searcher.search_and_download`) inside `await asyncio.to_thread(...)`, keeping the backend fully async and responsive.
+- **Robust Arxiv Handling**: Wrapped Arxiv downloading in a `try...except` block and safely verified file existence on disk before parsing.
+- **URL Normalization**: Created a strict `_normalize_url` helper that standardizes URLs before duplicate checking.
+- **Strict Parsing**: Enforced a strict `.pdf` file extension check before triggering local PDF parsing.
+- **Multi-Layered Quality Gate**: 
+  - *Layer 1 (Blacklist)*: Statically blacklisted common SEO/paywall farms (`quora.com`, `pinterest.com`, `chegg.com`).
+  - *Layer 2 (Heuristics)*: Reject content under 500 characters instantly.
+  - *Layer 3 (Strict Rubric)*: The LLM grades sources from 1-10 on Relevance, Depth, and Authority. A source needs a score >= 8 to pass.
+- **Token Limit Fix**: Knowledge sufficiency evaluation now generates a lightweight "Markdown Heading Outline" (Table of Contents) from the gathered knowledge, preventing token limit crashes.
+- **Clean Separation**: Abstracted the testing logic to an external `orchestrator_testing.py` file.
+================================================================================
+
+================================================================================
+CHANGELOG: scraper.py (Query Fanout & Optimization)
+================================================================================
+
+--- BEFORE ---
+- **Sequential Scraping**: The agent looped through generated queries one by one, searched DuckDuckGo, and then scraped each URL sequentially. This took several minutes because it waited for network I/O for each single step.
+- **Vulnerable to Rate Limits / Anti-Bot**: Because it relied on 1 or 2 sites sequentially, if a site blocked Crawl4AI (e.g. Cloudflare captcha), the agent would fail to gather knowledge for that topic.
+- **Short YouTube Videos Accepted**: If a YouTube video had a 5-second transcript ("Subscribe to my channel!"), the parser accepted it as a valid source.
+
+--- AFTER ---
+- **Query Fanout (Parallel Computation)**: 
+  - Implemented `asyncio.gather` for both web searching and web scraping inside `conduct_research`.
+  - The agent now fires off all search queries concurrently, pools all the unique URLs, and scrapes a massive batch of URLs (up to `MAX_SCRAPE_LIMIT`) concurrently.
+  - This effectively bypasses anti-bot defenses: even if a few major sites block the scraper, the wide parallel net instantly catches data from other smaller, relevant blogs.
+  - Reduced network waiting time from minutes to seconds.
+- **Sequential Quality Gate**: While fetching is concurrent, passing the fetched text through the LLM `evaluate_source_quality` is done sequentially to avoid triggering LLM API rate limits.
+- **YouTube Heuristic Added**: Updated `get_youtube_transcript` to measure the extracted text length. It instantly rejects and returns an empty string if the transcript is under 500 characters, mimicking the web layer heuristic.
+================================================================================
+
+================================================================================
+CHANGELOG: scraper.py (DOM Sniper & Quality Gate Tuning)
+================================================================================
+
+--- BEFORE ---
+- **Overly Strict Quality Gate**: The quality gate required a perfect 8/10 score. This caused it to falsely reject highly educational but structurally dense pages.
+- **Blind Scraping**: `crawl4ai` blindly extracted all text on the webpage, meaning it included massive navigation sidebars, footers, and cookie banners.
+- **False Negatives**: Because the LLM evaluated the first snippet of text (which was often just the "Main Menu" links), it assumed the page was irrelevant and rejected top-tier websites like TensorFlow Docs and Wikipedia.
+- **YouTube Version Bug**: Used `YouTubeTranscriptApi.list_transcripts()`, which caused an `AttributeError` on older versions of the library.
+
+--- AFTER ---
+- **Relaxed Quality Gate**: Lowered the passing score from 8 to 6 and updated the prompt to allow for pages that aren't "perfect" but are "useful enough to learn from".
+- **DOM Sniper (CSS Exclusions)**: 
+  - Fed a strict `excluded_tags` list into `crawl4ai` (`['nav', 'aside', 'footer', 'header', 'iframe', '.cookie-banner', '.adsbygoogle', '#sidebar', '.sidebar']`).
+  - The scraper now surgically deletes all boilerplate and distractive elements *before* parsing the text, guaranteeing the LLM only evaluates the pure article content.
+- **YouTube API Fix**: Swapped `list_transcripts()` for the universally compatible `get_transcript()` method, permanently resolving the versioning crash.
+================================================================================
