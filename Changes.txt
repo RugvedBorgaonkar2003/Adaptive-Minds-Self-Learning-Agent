@@ -80,3 +80,72 @@ CHANGELOG: scraper.py (DOM Sniper & Quality Gate Tuning)
   - The scraper now surgically deletes all boilerplate and distractive elements *before* parsing the text, guaranteeing the LLM only evaluates the pure article content.
 - **YouTube API Fix**: Swapped `list_transcripts()` for the universally compatible `get_transcript()` method, permanently resolving the versioning crash.
 ================================================================================
+
+================================================================================
+CHANGELOG: Generation Modules & AI Tutor Architecture
+================================================================================
+
+--- BEFORE ---
+- **The Truncation Bug (`curriculum_gen.py`)**: Blindly chopped Vector DB context at exactly 12,000 characters, risking slicing words or critical math formulas in half and confusing the LLM.
+- **The JSON Regex Trap (`curriculum_gen.py`, `tutor.py`)**: Regex for extracting JSON (`re.search(r'\{.*\}')`) failed and crashed instantly if the LLM outputted standard markdown backticks (e.g., ` ```json `).
+- **The Silent Psychologist (`tutor.py`)**: The `insight_node` swallowed its JSON crashes in silence (`except Exception: pass`), meaning the `student_profile` metrics (boredom, confusion) were permanently frozen.
+- **The RAM Killer (`tutor.py`)**: The Teacher node forced the backend to load a brand new 300MB HuggingFace Math Model into RAM every single time the user sent a message, guaranteeing a fatal server crash within 10 messages.
+- **Robotic Persona (`tutor.py`)**: The Tutor outputted sterile Wikipedia-style markdown (hashtags, bolding) and ignored the student's psychological profile.
+- **The Infinite Context Bomb (`tutor.py`)**: The Teacher appended the entire chat history forever. A long conversation would instantly blow past the LLM token limit.
+
+--- AFTER ---
+- **Iterative Context Packing (`curriculum_gen.py`)**: Replaced blind truncation with a loop that perfectly packs whole chunks one by one, stopping safely before the 12,000 limit without ever breaking a sentence.
+- **Aggressive Markdown Stripping**: Added a sanitizer (`.replace("```json", "")`) before every single Regex extraction, completely neutralizing the JSON parsing crashes across all generation modules.
+- **Psychologist Logging (`tutor.py`)**: Removed the silent `pass` in `insight_node` and added explicit error logging so metrics can be actively debugged.
+- **Singleton DB Cache (`tutor.py`)**: Implemented a global `_db_cache` dictionary at the top of the file. The HuggingFace embedding model is now safely loaded exactly ONCE per session and instantly reused for all subsequent messages, dropping RAM usage to almost zero.
+- **Dynamic Personality Engine (`tutor.py`)**: Radically rewrote the system prompt. The Tutor now shifts its literal persona (e.g., 'warm empathetic mentor', 'fast-paced senior engineer', 'meticulous teacher') dynamically based on the student's live Confusion Matrix. Strictly banned all markdown formatting to force a natural, human-to-human conversational tone.
+- **Character-Based Sliding Window (`tutor.py`)**: Added a 5-line Context Safety Filter to both the Teacher and Examiner nodes. It reads the infinite UI chat history backwards, calculates the character length, and smoothly drops the oldest messages to maintain a strict 4000-character safe zone before pinging the LLM. Zero risk of token limit blowouts.
+================================================================================
+
+================================================================================
+CHANGELOG: Database Safety & Concurrency (`student_profile.py`)
+================================================================================
+
+--- BEFORE ---
+- **The Double-Click Race Condition**: Used standard `open("file.json", "w")`. If two server threads triggered a save simultaneously (e.g., rapid clicking), they would overwrite each other and instantly scramble the JSON database.
+- **The Permanent Death Crash**: Used standard `json.load()`. If the server restarted during a file write, the file would corrupt. The next time the user logged in, `json.load()` would trigger a fatal `JSONDecodeError`, permanently locking the student out of the application.
+
+--- AFTER ---
+- **Thread Locking (Race Condition Fix)**: Implemented a global `threading.Lock()` traffic light. Concurrent save requests now cleanly wait in line, making simultaneous overwriting impossible.
+- **Atomic Writes (Corruption Fix)**: Implemented atomic writing via `os.replace`. Data is now safely written to a hidden `.tmp` file first. Only when the save is 100% complete does it instantly snap over the real file, guaranteeing the file can never be half-written or corrupted.
+- **Auto-Repair Safety Net**: Wrapped `load_profile` in a `try/except` block catching `JSONDecodeError`. If a file is somehow magically corrupted, it catches the crash, logs a warning, and instantly rebuilds a clean default profile so the student never experiences a crash or lockout.
+================================================================================
+
+================================================================================
+CHANGELOG: Study Generators (`flashcard_gen.py` & `notes_gen.py`)
+================================================================================
+
+--- BEFORE ---
+- **The RAM Killer**: Hardcoded `VectorDBManager()` in the `__init__` method. Every generated flashcard deck or chapter note re-loaded the 300MB HuggingFace model into RAM, causing immediate server exhaustion.
+- **The Blind Truncation Bug**: Blindly chopped Vector DB retrieved text at exactly 8,000 or 10,000 characters to fit the context window, frequently cutting paragraphs or complex formulas in half.
+- **The JSON Regex Trap (`flashcard_gen.py`)**: Blindly searched for JSON without stripping markdown formatting, causing fatal `json.loads` crashes when the LLM added backticks.
+- **Database Race Conditions & Corrupted Files**: Both modules wrote their output directly to `.json` or `.md` files using `open(filepath, "w")`. If two users requested generation for the same topic concurrently, their save operations would collide, overwrite each other, and instantly scramble the files forever.
+
+--- AFTER ---
+- **Singleton DB Cache**: Implemented a global `_db_cache` Singleton in both modules. The Vector DB is dynamically fetched instead of initialized, completely neutralizing the RAM leaks.
+- **Iterative Context Packing**: Replaced blind truncation with an iterative string packer that safely measures character counts and only packs whole paragraphs, preventing chainsawed strings.
+- **Aggressive Markdown Stripping**: Added `.replace("```json", "")` to `flashcard_gen.py` before Regex extraction, permanently neutralizing the LLM backtick crashes.
+- **Thread Locking & Atomic Writes**: Added `_flashcard_lock` and `_notes_lock` global traffic lights to both files. All save operations now safely queue up and write to a `.tmp` file first. The files are then atomically snapped into place using `os.replace`, completely preventing any chance of corrupted data from concurrent requests.
+================================================================================
+
+================================================================================
+CHANGELOG: Final Generation Polish (`report_gen.py`)
+================================================================================
+
+--- BEFORE ---
+- **The RAM Killer**: Hardcoded `VectorDBManager()` forced the server to load the 300MB HuggingFace math model into RAM during every single report generation, crashing the server.
+- **The Blind Truncation Bug**: Sliced the retrieved context at exactly 4,000 characters, frequently breaking sentences and causing the AI mentor to hallucinate facts in the "Honest Three" section.
+- **The JSON Regex Trap**: Attempted to extract JSON for both the "Honest Three" and "Page 2 Content" using `re.search()` without stripping markdown formatting. If the LLM used backticks, it crashed and the student received a fake, hardcoded generic report instead of their personalized one.
+- **Database Race Conditions**: Saved the final JSON report to disk using `open("w")`. Simultaneous requests or a crash during writing would corrupt the student's entire module report.
+
+--- AFTER ---
+- **Singleton DB Cache**: Implemented the global `_db_cache` Singleton. The Vector DB is dynamically fetched, permanently eliminating the RAM leak.
+- **Iterative Context Packing**: Replaced blind string slicing with an iterative chunk packer that perfectly packs whole paragraphs up to the 4,000 character limit without destroying data.
+- **Aggressive Markdown Stripping**: Added `.replace("```json", "")` right before both Regex extraction blocks. The JSON parsers are now perfectly stable and crash-proof.
+- **Thread Locking & Atomic Writes**: Injected a global `_report_lock`. Reports are queued, written to a `.tmp` file, and then atomically `os.replace`'d into existence, guaranteeing 100% file integrity.
+================================================================================

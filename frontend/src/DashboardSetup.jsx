@@ -2,375 +2,284 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import HarvestingStream from './HarvestingStream';
 import CurriculumGeneration from './CurriculumGeneration';
+import { useGlobalSound } from './SoundContext';
+import './DashboardSetup.css';
 
 export default function DashboardSetup() {
   const [step, setStep] = useState(1);
   const [topic, setTopic] = useState('');
   const [level, setLevel] = useState('');
-  const [goal, setGoal] = useState('');
-  const [sourceType, setSourceType] = useState(null); // 'auto' or 'manual'
+  const [goalDropdown, setGoalDropdown] = useState('');
+  const [customGoal, setCustomGoal] = useState('');
+  const [sourceType, setSourceType] = useState('auto');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobId, setJobId] = useState(null);
   const [curriculum, setCurriculum] = useState(null);
+  const { startSound } = useGlobalSound();
 
-  const handleTopicSubmit = (e) => {
-    if (e.key === 'Enter' && topic.trim() !== '') {
-      setStep(2);
-    }
-  };
-
-  const handleLevelSelect = (selectedLevel) => {
-    setLevel(selectedLevel);
-    setTimeout(() => setStep(3), 500);
-  };
-
-  const handleGoalSubmit = (e) => {
-    if (e.key === 'Enter' && goal.trim() !== '') {
-      setStep(4);
-    }
-  };
-
-  const handleChipSelect = (selectedGoal) => {
-    setGoal(selectedGoal);
-    setTimeout(() => setStep(4), 500);
-  };
-
-  const handleSourceSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    startSound();
+    setIsSubmitting(true);
     try {
+      const finalGoal = goalDropdown === 'other' ? customGoal : goalDropdown;
+      const finalSourceType = level === 'advanced' ? sourceType : 'auto';
       const formData = new FormData();
       formData.append('topic', topic);
       formData.append('level', level);
-      formData.append('reason', goal);
-      formData.append('source_method', sourceType || 'auto');
-      
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/onboard`, {
-        method: 'POST',
-        headers: {
-          'X-Groq-Api-Key': localStorage.getItem('groqApiKey') || ''
-        },
-        body: formData
-      });
-      
+      formData.append('reason', finalGoal);
+      formData.append('source_method', finalSourceType);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/onboard`,
+        {
+          method: 'POST',
+          headers: { 'X-Groq-Api-Key': localStorage.getItem('groqApiKey') || '' },
+          body: formData,
+        }
+      );
       const data = await response.json();
       if (data.status === 'success') {
         setJobId(data.job_id);
-        setStep(5);
+        setStep(2);
       } else {
-        alert("Error starting onboarding: " + data.message);
+        alert('Error starting onboarding: ' + data.message);
+        setIsSubmitting(false);
       }
     } catch (error) {
-      alert("Failed to connect to backend. Make sure FastAPI is running on port 8000.");
+      alert('Failed to connect to backend. Make sure FastAPI is running on port 8000.');
       console.error(error);
+      setIsSubmitting(false);
     }
   };
 
-  const getProgress = () => {
-    if (step === 1) return '20%';
-    if (step === 2) return '40%';
-    if (step === 3) return '60%';
-    if (step === 4) return '80%';
-    return '100%';
-  };
+  if (step === 2) {
+    return (
+      <motion.div
+        style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, zIndex: 100 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1 }}
+      >
+        <HarvestingStream
+          topic={topic}
+          jobId={jobId}
+          onComplete={(curr) => { setCurriculum(curr); setStep(3); }}
+        />
+      </motion.div>
+    );
+  }
+
+  if (step === 3) {
+    return (
+      <motion.div
+        style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, zIndex: 100 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1.5 }}
+      >
+        <CurriculumGeneration topic={topic} curriculum={curriculum} />
+      </motion.div>
+    );
+  }
+
+  const isFormValid =
+    topic.trim() !== '' &&
+    level !== '' &&
+    goalDropdown !== '' &&
+    (goalDropdown !== 'other' || customGoal.trim() !== '');
 
   return (
-    <div className="setup-container">
-      {/* Background glowing orb */}
-      <motion.div 
-        className="ambient-orb"
-        animate={{ 
-          scale: [1, 1.1, 1],
-          opacity: [0.3, 0.5, 0.3],
-          x: [0, 20, -20, 0],
-          y: [0, -20, 20, 0]
-        }}
-        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+    <div className="setup-page-wrapper">
+
+      {/* ── Layered Background ── */}
+      {/* The Zen garden blooms in slowly — meditative and calm */}
+      <motion.div
+        className="setup-bg-image"
+        initial={{ scale: 1.06, filter: 'blur(0px)' }}
+        animate={{ scale: 1, filter: 'blur(8px)' }}
+        transition={{ duration: 3.5, ease: [0.22, 1, 0.36, 1] }}
       />
 
-      {/* Progress Bar */}
-      <div className="setup-progress-bar">
-        <motion.div 
-          className="setup-progress-fill" 
-          animate={{ width: getProgress() }} 
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        />
-      </div>
+      {/* The warm ivory veil drifts in — like morning mist settling */}
+      <motion.div
+        className="setup-bg-overlay"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 2.8, ease: 'easeOut' }}
+      />
 
-      <div className="setup-content">
-        <AnimatePresence mode="wait">
-          {step === 1 && (
-            <motion.div 
-              key="step1"
-              className="step-wrapper"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -30 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-              <h2 className="step-label">Step 1: The Spark</h2>
-              <h1 className="step-question">What do you want to master today?</h1>
-              
-              <div className="giant-input-wrapper">
-                <input 
-                  type="text" 
-                  className="giant-topic-input"
-                  placeholder="e.g. Quantum Computing, Python, World History..."
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  onKeyDown={handleTopicSubmit}
-                  autoFocus
-                />
-                <motion.div 
-                  className="input-glow"
-                  animate={{ opacity: topic ? 1 : 0 }}
-                />
-              </div>
-              
-              <motion.p 
-                className="press-enter-hint"
-                animate={{ opacity: topic.trim() ? 1 : 0 }}
-              >
-                Press <strong>Enter</strong> to continue
-              </motion.p>
-            </motion.div>
-          )}
+      {/* Ambient glows */}
+      <div className="setup-bg-glow-1" />
+      <div className="setup-bg-glow-2" />
 
-          {step === 2 && (
-            <motion.div 
-              key="step2"
-              className="step-wrapper"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -30 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-              <h2 className="step-label">Step 2: The Foundation</h2>
-              <h1 className="step-question">At what depth should we begin?</h1>
-              
-              <div className="cards-grid">
-                <motion.div 
-                  className={`level-card ${level === 'novice' ? 'selected' : ''}`}
-                  onClick={() => handleLevelSelect('novice')}
-                  whileHover={{ y: -5 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <div className="card-icon">🌱</div>
-                  <h3>Seed</h3>
-                  <p>I am exploring the foundations</p>
-                </motion.div>
+      {/* ── The Card flows up after the background settles ── */}
+      <motion.div
+        className="setup-card"
+        initial={{ opacity: 0, y: 40, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.8 }}
+      >
+        {/* Left Panel */}
+        <div className="setup-left">
+          <motion.h1
+            className="setup-heading"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, ease: 'easeOut', delay: 1.2 }}
+          >
+            Construct<br />Your Journey.
+          </motion.h1>
+          <motion.p
+            className="setup-subheading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.9, delay: 1.5 }}
+          >
+            Provide the parameters of your learning. The agent will traverse the web,
+            synthesize the best material, and build a curriculum tailored to your exact goal.
+          </motion.p>
+        </div>
 
-                <motion.div 
-                  className={`level-card ${level === 'practitioner' ? 'selected' : ''}`}
-                  onClick={() => handleLevelSelect('practitioner')}
-                  whileHover={{ y: -5 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <div className="card-icon">🌿</div>
-                  <h3>Root</h3>
-                  <p>I want to deepen my existing skills</p>
-                </motion.div>
+        {/* Right Panel — Form */}
+        <motion.div
+          className="setup-right"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.9, delay: 1.1 }}
+        >
+          <form className="setup-form" onSubmit={handleSubmit}>
 
-                <motion.div 
-                  className={`level-card ${level === 'master' ? 'selected' : ''}`}
-                  onClick={() => handleLevelSelect('master')}
-                  whileHover={{ y: -5 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <div className="card-icon">🌳</div>
-                  <h3>Canopy</h3>
-                  <p>I need advanced, complex insights</p>
-                </motion.div>
-              </div>
-            </motion.div>
-          )}
-          
-          {step === 3 && (
-            <motion.div 
-              key="step3"
-              className="step-wrapper"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -30 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-              <h2 className="step-label">Step 3: The Intent</h2>
-              <h1 className="step-question">What is your ultimate goal?</h1>
-              
-              <div className="giant-input-wrapper">
-                <input 
-                  type="text" 
-                  className="giant-topic-input"
-                  placeholder="e.g. I want to build a web app..."
-                  value={goal}
-                  onChange={(e) => setGoal(e.target.value)}
-                  onKeyDown={handleGoalSubmit}
-                  autoFocus
-                />
-                <motion.div 
-                  className="input-glow"
-                  animate={{ opacity: goal ? 1 : 0 }}
-                />
-              </div>
-
-              <div className="suggestion-chips">
-                <motion.button 
-                  className="chip"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => handleChipSelect('Pass an Exam')}
-                >
-                  🎯 Pass an Exam
-                </motion.button>
-                <motion.button 
-                  className="chip"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => handleChipSelect('Build a Project')}
-                >
-                  🛠️ Build a Project
-                </motion.button>
-                <motion.button 
-                  className="chip"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => handleChipSelect('Personal Growth')}
-                >
-                  🌱 Personal Growth
-                </motion.button>
-              </div>
-              
-              <motion.p 
-                className="press-enter-hint"
-                animate={{ opacity: goal.trim() ? 1 : 0 }}
-              >
-                Press <strong>Enter</strong> to continue
-              </motion.p>
-            </motion.div>
-          )}
-
-          {step === 4 && (
-            <motion.div 
-              key="step4"
-              className="step-wrapper"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -30 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-               <h2 className="step-label">Step 4: The Harvest</h2>
-               <h1 className="step-question">How should we gather the knowledge?</h1>
-
-               {!sourceType && (
-                 <div className="cards-grid">
-                   <motion.div 
-                     className="source-card level-card"
-                     onClick={() => setSourceType('auto')}
-                     whileHover={{ y: -5 }}
-                     whileTap={{ scale: 0.98 }}
-                   >
-                     <div className="card-icon">✨</div>
-                     <h3>Autonomous Harvest</h3>
-                     <p>Let the AI agent scour the web and curate the best sources automatically.</p>
-                   </motion.div>
-
-                   <motion.div 
-                     className="source-card level-card"
-                     onClick={() => setSourceType('manual')}
-                     whileHover={{ y: -5 }}
-                     whileTap={{ scale: 0.98 }}
-                   >
-                     <div className="card-icon">📁</div>
-                     <h3>Provide Sources</h3>
-                     <p>Upload your own PDFs, documents, or provide specific web links.</p>
-                   </motion.div>
-                 </div>
-               )}
-
-               {sourceType === 'manual' && (
-                 <motion.div 
-                   className="manual-source-zone"
-                   initial={{ opacity: 0, scale: 0.95 }}
-                   animate={{ opacity: 1, scale: 1 }}
-                 >
-                   <div className="drag-drop-zone">
-                     <span className="zone-icon">📥</span>
-                     <p>Drag & drop PDFs here or click to browse</p>
-                   </div>
-                   <p className="or-divider">OR</p>
-                   <div className="giant-input-wrapper">
-                     <input 
-                       type="text" 
-                       className="giant-topic-input"
-                       placeholder="Paste a web link here..."
-                       onKeyDown={(e) => {
-                         if(e.key === 'Enter') handleSourceSubmit();
-                       }}
-                     />
-                   </div>
-                   <motion.button 
-                     className="begin-journey-btn construct-btn"
-                     style={{ position: 'relative', marginTop: '3rem', bottom: 'auto', right: 'auto' }}
-                     onClick={handleSourceSubmit}
-                   >
-                     Construct Curriculum
-                   </motion.button>
-                 </motion.div>
-               )}
-
-               {sourceType === 'auto' && (
-                 <motion.div 
-                   className="auto-harvest-zone"
-                   initial={{ opacity: 0 }}
-                   animate={{ opacity: 1 }}
-                 >
-                   <p className="ambient-text" style={{ fontSize: '1.2rem', color: 'var(--color-sage)', marginBottom: '2rem' }}>
-                     The Adaptive Agent is ready to begin searching the web for exactly what you need.
-                   </p>
-                   <motion.button 
-                     className="begin-journey-btn construct-btn"
-                     style={{ position: 'relative', bottom: 'auto', right: 'auto' }}
-                     onClick={handleSourceSubmit}
-                   >
-                     Initialize Agent
-                   </motion.button>
-                 </motion.div>
-               )}
-            </motion.div>
-          )}
-
-          {step === 5 && (
-            <motion.div 
-              key="step5"
-              style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, zIndex: 100 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1 }}
-            >
-              <HarvestingStream 
-                topic={topic} 
-                jobId={jobId}
-                onComplete={(curr) => {
-                  setCurriculum(curr);
-                  setStep(6);
-                }} 
+            <div className="setup-form-group">
+              <label>What do you want to learn?</label>
+              <input
+                type="text"
+                className="setup-input"
+                placeholder="e.g., Quantum Computing, Python, World History"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                required
               />
-            </motion.div>
-          )}
+            </div>
 
-          {step === 6 && (
-            <motion.div 
-              key="step6"
-              style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, zIndex: 100 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1.5 }}
+            <div className="setup-form-group">
+              <label>At what depth should we begin?</label>
+              <select
+                className="setup-select"
+                value={level}
+                onChange={(e) => setLevel(e.target.value)}
+                required
+              >
+                <option value="" disabled>Select your experience level</option>
+                <option value="beginner">Beginner — Exploring the foundations</option>
+                <option value="intermediate">Intermediate — Deepening existing skills</option>
+                <option value="advanced">Advanced — Complex insights &amp; mastery</option>
+              </select>
+            </div>
+
+            <div className="setup-form-group">
+              <label>Why do you want to learn this?</label>
+              <select
+                className="setup-select"
+                value={goalDropdown}
+                onChange={(e) => setGoalDropdown(e.target.value)}
+                required
+              >
+                <option value="" disabled>Select a goal</option>
+                <option value="Pass an exam">To pass an exam or certification</option>
+                <option value="Build a project">To build a practical project</option>
+                <option value="Personal growth">For personal growth and curiosity</option>
+                <option value="other">Other (Specify)</option>
+              </select>
+            </div>
+
+            <AnimatePresence>
+              {goalDropdown === 'other' && (
+                <motion.div
+                  className="setup-form-group"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <input
+                    type="text"
+                    className="setup-input"
+                    placeholder="Describe your specific goal…"
+                    value={customGoal}
+                    onChange={(e) => setCustomGoal(e.target.value)}
+                    required
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {level === 'advanced' && (
+                <motion.div
+                  className="setup-form-group"
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                  animate={{ opacity: 1, height: 'auto', marginTop: 4 }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <label>Information Source (Advanced Option)</label>
+                  <div className="source-options">
+                    <div
+                      className={`source-card ${sourceType === 'auto' ? 'selected' : ''}`}
+                      onClick={() => setSourceType('auto')}
+                    >
+                      <h4>Autonomous Harvest</h4>
+                      <p>Agent curates the web</p>
+                    </div>
+                    <div
+                      className={`source-card ${sourceType === 'manual' ? 'selected' : ''}`}
+                      onClick={() => setSourceType('manual')}
+                    >
+                      <h4>Upload Sources</h4>
+                      <p>Provide your own PDFs/Links</p>
+                    </div>
+                  </div>
+
+                  <AnimatePresence>
+                    {sourceType === 'manual' && (
+                      <motion.div
+                        className="upload-zone"
+                        initial={{ opacity: 0, scale: 0.97 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.97 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <p style={{ color: 'var(--ob-text-secondary)', marginBottom: '0.8rem', fontSize: '0.9rem' }}>
+                          Drag &amp; drop PDFs here (Coming Soon)
+                        </p>
+                        <input
+                          type="text"
+                          className="setup-input"
+                          placeholder="Or paste a link here…"
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <motion.button
+              type="submit"
+              id="begin-journey-btn"
+              className="setup-submit-btn"
+              disabled={!isFormValid || isSubmitting}
+              whileHover={isFormValid && !isSubmitting ? { y: -2 } : {}}
+              whileTap={isFormValid && !isSubmitting ? { scale: 0.98 } : {}}
+              transition={{ duration: 0.2 }}
             >
-              <CurriculumGeneration topic={topic} curriculum={curriculum} />
-            </motion.div>
-          )}
+              {isSubmitting ? 'Initializing Agent…' : 'Begin Journey'}
+            </motion.button>
 
-        </AnimatePresence>
-      </div>
+          </form>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

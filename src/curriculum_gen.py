@@ -1,8 +1,8 @@
 import json
 import re
 from typing import Dict, Any
-from src.llm import get_llm
-from src.vector_db import VectorDBManager
+from .llm import get_llm
+from .vector_db import VectorDBManager
 from langchain_core.messages import SystemMessage, HumanMessage
 
 class CurriculumGenerator:
@@ -28,15 +28,14 @@ class CurriculumGenerator:
             context_text = "No specific context available. Rely on general knowledge."
         else:
             print(f"Retrieved {len(retrieved_docs)} chunks from Vector DB to build context.")
-            # Combine the text of the chunks into a unified string
-            context_text = "\n\n".join([
-                f"[Source: {doc.metadata.get('type', 'unknown')}] {doc.metadata.get('Header 1', '')}: {doc.page_content}"
-                for doc in retrieved_docs
-            ])
-            
-        # To prevent overwhelming the LLM token limit, truncate context if massive
-        if len(context_text) > 12000:
-            context_text = context_text[:12000] + "... [TRUNCATED]"
+            # Combine chunks iteratively to prevent blindly chopping words or math formulas in half
+            context_text = ""
+            for doc in retrieved_docs:
+                chunk_str = f"[Source: {doc.metadata.get('type', 'unknown')}] {doc.metadata.get('title', '')}: {doc.page_content}\n\n"
+                # Stop adding full chunks if we hit the 12000 character safety limit
+                if len(context_text) + len(chunk_str) > 12000:
+                    break
+                context_text += chunk_str
 
         # 2. Strict JSON Prompt
         prompt = f"""You are an expert Professor designing a curriculum.
@@ -84,7 +83,9 @@ Knowledge Context:
                 content_str = "".join([block.get("text", "") for block in content_str if isinstance(block, dict)])
             
             # 4. Strict Regex JSON Extraction (Crash Prevention)
-            match = re.search(r'\{.*\}', str(content_str), re.DOTALL)
+            # Aggressively strip markdown backticks to prevent json.loads from instantly crashing
+            clean_str = str(content_str).replace("```json", "").replace("```", "").strip()
+            match = re.search(r'\{.*\}', clean_str, re.DOTALL)
             if match:
                 raw_json = match.group(0)
                 curriculum = json.loads(raw_json)

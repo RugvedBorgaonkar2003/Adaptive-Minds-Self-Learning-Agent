@@ -1,9 +1,18 @@
 from typing import TypedDict, List, Dict, Any, Annotated
 from langchain_core.messages import BaseMessage, SystemMessage, AIMessage, HumanMessage
 import operator
-from src.llm import get_llm
-from src.vector_db import VectorDBManager
-from src.student_profile import StudentProfileManager
+from .llm import get_llm
+from .vector_db import VectorDBManager
+from .student_profile import StudentProfileManager
+from .prompts import get_tutor_greeting_prompt, get_teach_concept_prompt, get_evaluate_module_prompt, get_grade_student_prompt, get_insight_prompt
+
+# Global cache to prevent the RAM Killer (reloading the HuggingFace model every message)
+_db_cache = {}
+
+def get_cached_db(topic: str) -> VectorDBManager:
+    if topic not in _db_cache:
+        _db_cache[topic] = VectorDBManager(topic_name=topic)
+    return _db_cache[topic]
 
 class TutorState(TypedDict):
     """
@@ -57,8 +66,9 @@ def retrieve_knowledge_node(state: TutorState) -> Dict[str, Any]:
         query = concepts[con_idx] if con_idx < len(concepts) else current_module.get("title", "")
         print(f"\n[Node: Retrieve] Preparing to teach Concept: '{query}'")
 
-    # 2. Query the Vector Database
-    db = VectorDBManager()
+    # 2. Query the Vector Database using the cached Singleton
+    topic = curriculum.get("topic", "default_topic")
+    db = get_cached_db(topic)
     
     # We pull more chunks for a module test (7), fewer for a single concept (4)
     k_chunks = 7 if is_testing else 4
@@ -66,7 +76,7 @@ def retrieve_knowledge_node(state: TutorState) -> Dict[str, Any]:
     
     # 3. Format the text for the LLM
     if not docs:
-        context_str = "No specific context found. Rely on general AI programming knowledge."
+        context_str = "No source context available in the database for this query."
     else:
         # We combine the retrieved text into one giant string
         context_str = "\n\n---\n\n".join([d.page_content for d in docs])
@@ -102,47 +112,39 @@ def teach_concept_node(state: TutorState) -> Dict[str, Any]:
     current_concept = concepts[con_idx]
     print(f"\n[Node: Teach] Generating lesson for: '{current_concept}'...")
     
-    # Adaptive teaching logic
+    # Load the full student profile — pass it whole to the prompt
     db = StudentProfileManager()
     profile = db.load_profile()
+
+    # Single adaptive persona — the prompt matrix handles all fine-tuned adjustments
+    persona = "highly adaptive, human-like AI mentor"
+
+    # --- CONTEXT SAFETY FILTER ---
+    # We iterate backwards through the chat history and only keep whole messages until we hit a 4000-character safety limit.
+    # This guarantees we never blow up the LLM token limit, while perfectly preserving conversational flow.
+    raw_messages = state.get("messages", [])
     
-    emotion = profile.get("emotional_state", "neutral")
-    pref = profile.get("explanation_preference", "balance")
-    boredom = int(profile.get("boredom_score", 0))
-    confusion = int(profile.get("confusion_score", 0))
-    velocity = profile.get("learning_velocity", "medium")
+    # Check if this is the first message (greeting / onboarding intro)
+    is_greeting = False
+    if len(raw_messages) == 1 and getattr(raw_messages[0], "name", "") == "system_init":
+        is_greeting = True
+
+    if is_greeting:
+        system_prompt = get_tutor_greeting_prompt(persona, level, current_concept, curriculum)
+    else:
+        system_prompt = get_teach_concept_prompt(persona, level, current_concept, context, profile, failed_attempts)
+
+    safe_history = []
+    char_count = 0
     
-    adaptation_prompt = f"\n-- PSYCHOLOGICAL METRICS & PACING OVERRIDE --"
-    adaptation_prompt += f"\nThe student's current emotional state is: {emotion.upper()}."
-    adaptation_prompt += f"\nTheir explanation preference is: {pref.upper()}."
-    
-    if confusion >= 6:
-        adaptation_prompt += "\nCRITICAL: The student is highly CONFUSED. You MUST slow down. Use an extremely simple, relatable analogy. Avoid jargon."
-    elif boredom >= 6 and emotion != "frustrated":
-        adaptation_prompt += "\nCRITICAL: The student is BORED. Their learning velocity allows you to speed up. Skip the basics and jump straight to the most advanced, thought-provoking application of this concept."
+    for msg in reversed(raw_messages):
+        msg_len = len(str(msg.content))
+        if char_count + msg_len > 4000:
+            break
+        safe_history.insert(0, msg) # Insert at start to maintain chronological order
+        char_count += msg_len
         
-    if failed_attempts > 0:
-        adaptation_prompt += f"\nCRITICAL INSTRUCTION: The student just failed the end-of-module test. They are struggling. You MUST teach this using NEW, simpler analogies. Break it down much further than your standard explanation."
-
-    system_prompt = f"""You are a world-class AI Tutor teaching a '{level}' student. 
-Your current goal is to teach the concept: "{current_concept}".
-
-Base your lesson on this ground-truth knowledge from the curriculum:
-<context>
-{context}
-</context>
-{adaptation_prompt}
-
-Instructions:
-1. Explain the concept clearly, speaking directly to the student.
-2. ADAPT YOUR TONE AND EXPLANATION STYLE to perfectly match the Psychological Metrics provided above. 
-3. If their preference is "analogy", rely heavily on real-world examples. If "code", give a tiny pseudo-code snippet. 
-4. Keep the lesson concise (2-3 short, readable paragraphs). Do not overwhelm them with a wall of text.
-5. End your message by asking an engaging verification question like: "Does this make sense?" or "Can you see how this applies to X?". DO NOT give them a formal quiz test yet.
-"""
-
-    # We feed the LLM the system instructions PLUS the entire chat history so it remembers the conversation
-    messages_to_pass = [SystemMessage(content=system_prompt)] + state.get("messages", [])
+    messages_to_pass = [SystemMessage(content=system_prompt)] + safe_history
     
     try:
         response = llm.invoke(messages_to_pass)
@@ -178,24 +180,20 @@ def evaluate_module_node(state: TutorState) -> Dict[str, Any]:
     if failed_attempts > 0:
         adaptation_prompt = f"\nCRITICAL INSTRUCTION: The student just FAILED the previous test for this module. You MUST generate a completely NEW and DIFFERENT question. Do not repeat the same question. Consider asking it in a simpler, more applied way."
 
-    system_prompt = f"""You are a world-class AI Tutor assessing a '{level}' student. 
-The student has just finished learning the module: "{module_title}".
+    system_prompt = get_evaluate_module_prompt(level, module_title, context, adaptation_prompt)
 
-Your goal is to verify they actually understood the material. 
-Base your question ONLY on this ground-truth knowledge from the curriculum:
-<context>
-{context}
-</context>
-{adaptation_prompt}
-
-Instructions:
-1. Generate EXACTLY ONE clear, targeted question that tests their comprehension of the core concepts in this module.
-2. DO NOT ask multiple choice questions. Ask a short-answer question that requires them to explain or apply the concept in their own words.
-3. Keep the tone encouraging but academically rigorous. e.g., "Alright, we've finished this chapter! Before we move on, let's do a quick knowledge check: [Question]"
-4. DO NOT provide the answer in your response.
-"""
-
-    messages_to_pass = [SystemMessage(content=system_prompt)] + state.get("messages", [])
+    # --- CONTEXT SAFETY FILTER ---
+    raw_messages = state.get("messages", [])
+    safe_history = []
+    char_count = 0
+    for msg in reversed(raw_messages):
+        msg_len = len(str(msg.content))
+        if char_count + msg_len > 4000:
+            break
+        safe_history.insert(0, msg)
+        char_count += msg_len
+        
+    messages_to_pass = [SystemMessage(content=system_prompt)] + safe_history
     
     try:
         response = llm.invoke(messages_to_pass)
@@ -230,29 +228,7 @@ def grade_student_node(state: TutorState) -> Dict[str, Any]:
     import re
     import json
     
-    system_prompt = f"""You are a strict but encouraging AI Teacher grading a student's end-of-module test.
-You must evaluate their answer against the Ground Truth Facts.
-
-Question Asked: "{ai_question}"
-Student's Answer: "{student_answer}"
-
-Ground Truth Facts:
-<context>
-{context}
-</context>
-
-Instructions:
-1. Compare the student's answer to the ground truth facts.
-2. Assign an integer score from 0 to 100. (70 or higher is passing).
-3. Write 2-3 short sentences of encouraging feedback. 
-4. CRITICAL: If they scored under 70, DO NOT give them the direct answer. Just give a hint about what they missed so they can try again.
-
-You MUST return ONLY a valid JSON object matching this exact schema:
-{{
-    "score": 85,
-    "feedback": "Excellent job! You correctly identified that..."
-}}
-"""
+    system_prompt = get_grade_student_prompt(ai_question, student_answer, context)
 
     try:
         response = llm.invoke([
@@ -264,7 +240,9 @@ You MUST return ONLY a valid JSON object matching this exact schema:
         if isinstance(content_str, list):
             content_str = "".join([block.get("text", "") for block in content_str if isinstance(block, dict)])
             
-        match = re.search(r'\{.*\}', str(content_str), re.DOTALL)
+        # Aggressively strip markdown to prevent the JSON Regex Crash
+        clean_str = str(content_str).replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{.*\}', clean_str, re.DOTALL)
         if match:
             raw_json = match.group(0)
             evaluation = json.loads(raw_json)
@@ -305,32 +283,15 @@ def insight_node(state: TutorState) -> Dict[str, Any]:
     llm = get_llm()
     import re, json
     
-    prompt = f"""Analyze the student's latest message for psychological and cognitive indicators.
-
-AI Tutor recently said: "{ai_context}"
-Student replied: "{student_msg}"
-
-Determine the following metrics:
-1. boredom_score (0-10): How bored or disengaged do they sound? (e.g., short, dismissive answers)
-2. confusion_score (0-10): How confused are they?
-3. emotional_state: Output exactly one of: "frustrated", "confident", "anxious", "flow", "neutral"
-4. question_depth_trend: Output exactly one of: "shallow", "medium", "deep". (If they just answered a question and didn't ask one, rate the depth of their thought).
-
-Return ONLY valid JSON matching this schema exactly:
-{{
-    "boredom_score": 0,
-    "confusion_score": 0,
-    "emotional_state": "neutral",
-    "question_depth_trend": "shallow"
-}}
-"""
+    prompt = get_insight_prompt(ai_context, student_msg)
     try:
         response = llm.invoke([
             SystemMessage(content="You are a silent psychological observer. Output ONLY valid JSON."),
             HumanMessage(content=prompt)
         ])
         
-        content_str = str(response.content)
+        # Aggressively strip markdown to prevent the silent JSON crash
+        content_str = str(response.content).replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', content_str, re.DOTALL)
         if match:
             metrics = json.loads(match.group(0))
@@ -339,10 +300,10 @@ Return ONLY valid JSON matching this schema exactly:
             db = StudentProfileManager()
             db.update_metrics(metrics)
             
-            print(f"👁️‍🗨️ [Insight Tracker]: Emotion: {metrics.get('emotional_state')} | Boredom: {metrics.get('boredom_score')}/10 | Confusion: {metrics.get('confusion_score')}/10")
+            print(f"👁️‍🗨️ [Insight] Emotion: {metrics.get('emotional_state')} | Boredom: {metrics.get('boredom_score')}/10 | Confusion: {metrics.get('confusion_score')}/10 | Velocity: {metrics.get('learning_velocity')} | Pref: {metrics.get('explanation_preference')} | Depth: {metrics.get('question_depth_trend')} | Pretend: {metrics.get('pretend_understanding_flags')}")
     except Exception as e:
-        # We silently swallow errors here to not interrupt the teaching flow
-        pass
+        # We no longer fail silently! If the Psychologist crashes, we log it so we can fix it.
+        print(f"⚠️ [Insight Tracker Error]: Failed to analyze psychology. Error: {e}")
         
     return {}
 

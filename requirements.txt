@@ -25,3 +25,4 @@ uvicorn
 youtube-transcript-api
 playwright
 sentence-transformers
+

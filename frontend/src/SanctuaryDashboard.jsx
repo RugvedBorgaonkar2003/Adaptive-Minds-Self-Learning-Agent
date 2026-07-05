@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import FlashcardsView from './FlashcardsView';
 import NotesView from './NotesView';
 import ReportsView from './ReportsView';
 import ModuleTestView from './ModuleTestView';
+import PomodoroClock from './PomodoroClock';
+import { useGlobalSound } from './SoundContext';
+import ReactMarkdown from 'react-markdown';
 
 export default function SanctuaryDashboard() {
   const [activeTab, setActiveTab] = useState('learning'); // learning, reports, notes, flashcards
@@ -21,6 +24,29 @@ export default function SanctuaryDashboard() {
 
   // Test mode: true when backend signals all concepts done & test should begin
   const [isTestingMode, setIsTestingMode] = useState(false);
+
+  // Zen Light additions
+  const { soundOn, toggleSound } = useGlobalSound();
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFocusMode(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFocus = () => {
+    if (!document.fullscreenElement) {
+      wrapperRef.current?.requestFullscreen?.();
+      // State is updated via event listener
+    } else {
+      document.exitFullscreen?.();
+      // State is updated via event listener
+    }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('curriculum');
@@ -179,8 +205,8 @@ export default function SanctuaryDashboard() {
   };
 
   return (
-    <div className="sanctuary-wrapper">
-      {/* Background with Tyndall effect & dark overlay */}
+    <div ref={wrapperRef} className={`sanctuary-wrapper ${isFocusMode ? 'focus-mode' : ''}`}>
+      {/* Background with Zen light theme elements */}
       <div className="sanctuary-bg"></div>
 
       <div className="sanctuary-layout">
@@ -279,16 +305,42 @@ export default function SanctuaryDashboard() {
                   <h2>Deep Mastery Session</h2>
                   <p>{currentModuleTitle}</p>
                 </div>
-                <div className="header-status">
-                  <span className="pulse-indicator"></span> Agent Active
+                <div className="header-controls">
+                  
+                  <motion.button
+                    onClick={toggleFocus}
+                    whileHover={{ scale: 1.04 }} 
+                    whileTap={{ scale: 0.96 }}
+                    className="zen-control-btn"
+                  >
+                    <span>{isFocusMode ? '⊠' : '⊞'}</span>
+                    {isFocusMode ? 'Exit Focus' : 'Focus Mode'}
+                  </motion.button>
+                  
+                  <motion.button
+                    onClick={toggleSound}
+                    whileHover={{ scale: 1.04 }} 
+                    whileTap={{ scale: 0.96 }}
+                    className="zen-control-btn"
+                  >
+                    <span>{soundOn ? '🔊' : '🔇'}</span>
+                  </motion.button>
+
+
+                  
+                  <PomodoroClock />
                 </div>
               </div>
 
               <div className="chat-history">
                 {messages.map((msg, idx) => (
                   <div key={idx} className={`message-wrapper ${msg.role}`}>
-                    <div className="message-bubble">
-                      {msg.content}
+                    <div className={`message-bubble ${msg.role === 'agent' ? 'markdown-body' : ''}`}>
+                      {msg.role === 'agent' ? (
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      ) : (
+                        msg.content
+                      )}
                     </div>
                   </div>
                 ))}
@@ -308,17 +360,7 @@ export default function SanctuaryDashboard() {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                   </button>
                 </div>
-                {/* Next Concept button — user controls when to advance */}
-                <div className="next-concept-row">
-                  <button
-                    className="next-concept-btn"
-                    onClick={handleNextConcept}
-                    disabled={isProcessing}
-                    title="Click when you fully understand this concept and are ready to move on"
-                  >
-                    ✅ I Understand — Next Concept →
-                  </button>
-                </div>
+
               </div>
             </>
           )}

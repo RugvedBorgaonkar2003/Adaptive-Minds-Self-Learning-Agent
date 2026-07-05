@@ -1,13 +1,25 @@
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Dict, Any
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from src.llm import get_llm
-from src.vector_db import VectorDBManager
-from src.student_profile import StudentProfileManager
+from .llm import get_llm
+from .vector_db import VectorDBManager
+from .student_profile import StudentProfileManager
+
+# 1. Thread Lock for Database Safety
+_notes_lock = threading.Lock()
+
+# 2. Global Cache to prevent RAM Killer
+_db_cache = {}
+
+def get_cached_db(topic: str) -> VectorDBManager:
+    if topic not in _db_cache:
+        _db_cache[topic] = VectorDBManager(topic_name=topic)
+    return _db_cache[topic]
 
 
 class NotesGenerator:
@@ -22,7 +34,7 @@ class NotesGenerator:
 
     def __init__(self):
         self.llm = get_llm()
-        self.db = VectorDBManager()
+        # VectorDB dynamically fetched via get_cached_db() to prevent RAM leaks
         self.save_dir = "./data/notes"
         os.makedirs(self.save_dir, exist_ok=True)
 
@@ -50,15 +62,17 @@ class NotesGenerator:
         pref = profile.get("explanation_preference", "balance")
         emotion = profile.get("emotional_state", "neutral")
 
-        # 2. Retrieve rich context from ChromaDB for every concept in the module
+        # 2. Retrieve rich context from ChromaDB using cached Singleton
+        db = get_cached_db(topic)
+        
         all_context_parts = []
         for concept in concepts:
-            docs = self.db.retrieve_relevant_knowledge(query=concept, top_k=3)
+            docs = db.retrieve_relevant_knowledge(query=concept, top_k=3)
             for doc in docs:
                 all_context_parts.append(doc.page_content)
 
         # Also query by module title for broader context
-        module_docs = self.db.retrieve_relevant_knowledge(query=module_title, top_k=4)
+        module_docs = db.retrieve_relevant_knowledge(query=module_title, top_k=4)
         for doc in module_docs:
             all_context_parts.append(doc.page_content)
 
@@ -70,9 +84,13 @@ class NotesGenerator:
                 seen.add(part)
                 unique_parts.append(part)
 
-        context = "\n\n---\n\n".join(unique_parts)
-        if len(context) > 10000:
-            context = context[:10000] + "... [TRUNCATED]"
+        # Iterative Context Packing to prevent Blind Truncation
+        context = ""
+        for part in unique_parts:
+            chunk_str = f"{part}\n\n---\n\n"
+            if len(context) + len(chunk_str) > 10000:
+                break
+            context += chunk_str
 
         if not context.strip():
             context = f"No specific context found. Rely on general knowledge of '{module_title}'."
@@ -172,8 +190,12 @@ Rules:
         filename = f"{safe_name}_{timestamp}.md"
         filepath = os.path.join(self.save_dir, filename)
 
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
+        with _notes_lock:
+            # Atomic Writes to prevent corrupted files if rapid-clicked
+            temp_path = filepath + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(temp_path, filepath)
 
         print(f"💾 Chapter notes saved to: {filepath}")
 

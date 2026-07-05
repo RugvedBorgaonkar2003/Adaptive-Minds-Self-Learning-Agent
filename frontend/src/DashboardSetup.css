@@ -1,0 +1,291 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+/* ─── Root Design Tokens (matches Hero palette exactly) ─── */
+:root {
+  --ob-bg:             #F4F1EA;
+  --ob-text-primary:   #2C352E;
+  --ob-text-secondary: #6A786B;
+  --ob-accent:         #879C89;
+  --ob-font-serif:     'Lora', serif;
+  --ob-font-sans:      'Outfit', sans-serif;
+}
+
+/* ─── Full-screen Wrapper ─── */
+.setup-page-wrapper {
+  position: relative;
+  min-height: 100vh;
+  width: 100vw;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: var(--ob-font-sans);
+  color: var(--ob-text-primary);
+  overflow: hidden;
+  padding: 2rem;
+}
+
+/* ─── Background Layer: Zen Garden — misty lake, sand ripples, smooth stones ─── */
+.setup-bg-image {
+  position: absolute;
+  inset: 0;
+  background-image: url('https://images.unsplash.com/photo-1545569341-9eb8b30979d9?q=80&w=2070&auto=format&fit=crop');
+  background-size: cover;
+  background-position: center 60%;
+  z-index: 0;
+}
+
+/* Warm Ivory frosted overlay — lets the misty Zen garden breathe through */
+.setup-bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(244, 241, 234, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 1;
+}
+
+/* Warm amber-sage glow — matches the golden misty morning light in the Zen garden */
+.setup-bg-glow-1 {
+  position: absolute;
+  top: -10%;
+  left: -10%;
+  width: 60vw;
+  height: 60vw;
+  background: radial-gradient(circle, rgba(212, 195, 164, 0.25) 0%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Second glow on bottom-right — the warm sandy Zen balance point */
+.setup-bg-glow-2 {
+  position: absolute;
+  bottom: -15%;
+  right: -10%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(195, 179, 148, 0.18) 0%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ─── The Card ─── */
+.setup-card {
+  position: relative;
+  z-index: 10;
+  background: rgba(252, 250, 246, 0.75);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 2px 4px rgba(44, 53, 46, 0.04),
+    0 8px 28px rgba(44, 53, 46, 0.07),
+    0 36px 72px rgba(44, 53, 46, 0.09);
+  border-radius: 28px;
+  width: 100%;
+  max-width: 940px;
+  display: flex;
+  min-height: 520px;
+  overflow: hidden;
+}
+
+/* ─── Left Panel ─── */
+.setup-left {
+  flex: 1;
+  padding: 4rem 3rem;
+  background: linear-gradient(160deg, rgba(228, 233, 227, 0.8) 0%, rgba(240, 237, 230, 0.5) 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid rgba(44, 53, 46, 0.07);
+}
+
+.setup-heading {
+  font-family: var(--ob-font-serif);
+  font-size: 2.9rem;
+  font-weight: 400;
+  margin-bottom: 1.5rem;
+  color: var(--ob-text-primary);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.setup-subheading {
+  color: var(--ob-text-secondary);
+  font-size: 0.92rem;
+  font-weight: 300;
+  line-height: 1.65;
+}
+
+/* ─── Right Panel ─── */
+.setup-right {
+  flex: 1.3;
+  padding: 4rem 3rem;
+  background: rgba(252, 250, 247, 0.65);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+}
+
+.setup-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.setup-form-group label {
+  font-size: 0.88rem;
+  color: var(--ob-text-primary);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* ─── Form Fields ─── */
+.setup-input,
+.setup-select {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(44, 53, 46, 0.13);
+  background: rgba(255, 255, 255, 0.8);
+  font-family: var(--ob-font-sans);
+  font-size: 0.95rem;
+  color: var(--ob-text-primary);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+  appearance: none;
+}
+
+/* Override native browser dropdown option highlight */
+.setup-select {
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'292.4' height%3D'292.4'%3E%3Cpath fill%3D'%236A786B' d%3D'M287 69.4a17.6 17.6 0 0 0-13-5.4H18.4c-5 0-9.3 1.8-12.9 5.4A17.6 17.6 0 0 0 0 82.2c0 5 1.8 9.3 5.4 12.9l128 127.9c3.6 3.6 7.8 5.4 12.8 5.4s9.2-1.8 12.8-5.4L287 95c3.5-3.5 5.4-7.8 5.4-12.8 0-5-1.9-9.2-5.5-12.8z'%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1.1em top 50%;
+  background-size: 0.6em auto;
+  cursor: pointer;
+}
+
+.setup-select option {
+  font-family: var(--ob-font-sans);
+  background-color: #FDFCFA;
+  color: var(--ob-text-primary);
+}
+
+.setup-input:focus,
+.setup-select:focus {
+  outline: none;
+  border-color: var(--ob-accent);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 3px rgba(135, 156, 137, 0.18);
+}
+
+.setup-input::placeholder {
+  color: rgba(44, 53, 46, 0.35);
+  font-weight: 300;
+}
+
+/* ─── Source Cards (Advanced) ─── */
+.source-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+}
+
+.source-card {
+  padding: 1rem 1.2rem;
+  border-radius: 12px;
+  border: 1px solid rgba(44, 53, 46, 0.1);
+  background: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.source-card.selected {
+  background: rgba(135, 156, 137, 0.12);
+  border-color: var(--ob-accent);
+}
+
+.source-card:hover:not(.selected) {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(44, 53, 46, 0.18);
+}
+
+.source-card h4 {
+  font-family: var(--ob-font-sans);
+  font-weight: 500;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+  color: var(--ob-text-primary);
+}
+
+.source-card p {
+  font-size: 0.82rem;
+  color: var(--ob-text-secondary);
+  line-height: 1.35;
+}
+
+/* ─── Upload Zone ─── */
+.upload-zone {
+  margin-top: 0.7rem;
+  padding: 1.8rem;
+  border: 1.5px dashed rgba(44, 53, 46, 0.2);
+  border-radius: 12px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* ─── CTA Button ─── */
+.setup-submit-btn {
+  margin-top: 0.6rem;
+  padding: 1rem;
+  background-color: var(--ob-text-primary);
+  color: var(--ob-bg);
+  border: none;
+  border-radius: 40px;
+  font-family: var(--ob-font-sans);
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 14px rgba(44, 53, 46, 0.1);
+  letter-spacing: 0.01em;
+}
+
+.setup-submit-btn:hover:not(:disabled) {
+  background-color: var(--ob-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(135, 156, 137, 0.3);
+}
+
+.setup-submit-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 860px) {
+  .setup-card {
+    flex-direction: column;
+    min-height: auto;
+  }
+  .setup-left {
+    border-right: none;
+    border-bottom: 1px solid rgba(44, 53, 46, 0.05);
+    padding: 3rem 2rem 2.5rem;
+  }
+  .setup-right {
+    padding: 2.5rem 2rem 3rem;
+  }
+  .setup-heading {
+    font-size: 2.2rem;
+  }
+}

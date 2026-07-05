@@ -1,0 +1,206 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+.zen-curriculum-wrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Outfit', sans-serif;
+  color: #2C352E;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Zen Sand Garden Background ─── */
+.zen-sand-bg {
+  position: absolute;
+  inset: 0;
+  background-color: #F4F1EA;
+  /* SVG data URI for subtle raked sand ripple texture */
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.83v58.34l-.83.83H5.373l-.83-.83V.83l.83-.83h49.254zM53.5 58.5V1.5H6.5v57h47zM30 18a12 12 0 100 24 12 12 0 000-24zm0 22a10 10 0 110-20 10 10 0 010 20zm0-18a8 8 0 100 16 8 8 0 000-16zm0 14a6 6 0 110-12 6 6 0 010 12z' fill='%23e0dbce' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E");
+  background-size: 80px 80px;
+  z-index: 0;
+}
+
+/* Soft vignette overlay */
+.zen-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 30%, rgba(244, 241, 234, 0.6) 80%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ─── Top Bar (Controls) ─── */
+.zen-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.4rem 2.5rem;
+}
+
+/* ─── Scrolling Container ─── */
+.zen-scroll-container {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding-top: 15vh;
+  padding-bottom: 30vh; /* space to scroll past the last item */
+  display: flex;
+  justify-content: center;
+}
+
+/* Hide scrollbar for a cleaner zen look */
+.zen-scroll-container::-webkit-scrollbar {
+  width: 0;
+  background: transparent;
+}
+
+/* ─── Center SVG Path ─── */
+.zen-path-svg {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px; /* Match the max-width of the stones container so the line can touch them */
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ─── Stepping Stones Container ─── */
+.zen-stones-container {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 5;
+}
+
+.zen-stone-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  height: 300px; /* Fixed row height so the SVG line hits the exact center */
+  align-items: center;
+}
+
+.zen-stone-wrapper:nth-child(even) {
+  justify-content: flex-end;
+}
+
+/* The visual stone */
+.zen-stone {
+  position: relative;
+  width: 400px;
+  padding: 2.2rem;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 40px; /* smooth rounded stone shape */
+  border: 1px solid rgba(135, 156, 137, 0.15);
+  box-shadow: 
+    0 10px 30px rgba(44, 53, 46, 0.05),
+    inset 0 2px 10px rgba(255, 255, 255, 0.8);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+
+.zen-stone::before {
+  content: '';
+  position: absolute;
+  top: -2px; left: -2px; right: -2px; bottom: -2px;
+  border-radius: 42px;
+  background: linear-gradient(135deg, rgba(135, 156, 137, 0.4), transparent);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.zen-stone.glowing::before {
+  opacity: 1;
+  animation: gentlePulse 3s ease-in-out infinite;
+}
+
+@keyframes gentlePulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.02); }
+}
+
+.zen-stone-title {
+  font-family: var(--ob-font-serif);
+  font-size: 1.4rem;
+  color: #2C352E;
+  margin: 0 0 1.2rem 0;
+  font-weight: 500;
+}
+
+.zen-concept-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.zen-concept-item {
+  font-size: 0.95rem;
+  color: #6A786B;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  line-height: 1.5;
+}
+
+.zen-concept-bullet {
+  color: #879C89;
+  font-size: 0.8rem;
+  margin-top: 0.3rem;
+}
+
+/* Floating AI Thought near the "pen" */
+.ai-thought-bubble {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(44, 53, 46, 0.8);
+  color: #F4F1EA;
+  padding: 0.6rem 1.2rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  box-shadow: 0 4px 15px rgba(44, 53, 46, 0.15);
+  transition: top 0.3s ease;
+}
+
+/* Completion Button */
+.zen-enter-btn {
+  margin: 4rem auto;
+  padding: 1.2rem 2.5rem;
+  background-color: #2C352E;
+  color: #F4F1EA;
+  border: none;
+  border-radius: 40px;
+  font-family: var(--ob-font-sans);
+  font-weight: 500;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(44, 53, 46, 0.15);
+  letter-spacing: 0.02em;
+  display: block;
+}
+
+.zen-enter-btn:hover {
+  background-color: #879C89;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(135, 156, 137, 0.3);
+}

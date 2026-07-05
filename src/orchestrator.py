@@ -46,7 +46,7 @@ class KnowledgeOrchestrator:
             # Fallback for unrecognized things, though we could try to treat them as web searches
             return "web"
 
-    async def run(self, topic: str, level: str, sources: List[str], extracted_callback=None) -> List[Dict[str, Any]]:
+    async def run(self, topic: str, level: str, reason: str = "Deep Conceptual Understanding", sources: List[str] = None, extracted_callback=None) -> List[Dict[str, Any]]:
         """
         The main pipeline. Processes all user-provided sources. 
         If the level is advanced, automatically supplements with Arxiv.
@@ -54,6 +54,9 @@ class KnowledgeOrchestrator:
         Returns:
             A list of structured dictionary chunks mapping the source metadata to its extracted markdown content.
         """
+        if sources is None:
+            sources = []
+
         extracted_knowledge = []
 
         print(f"\n--- Orchestrating Knowledge Gathering for: '{topic}' [{level}] ---")
@@ -71,7 +74,7 @@ class KnowledgeOrchestrator:
                 elif source_type == "web":
                     content = await self.web_scraper.scrape_url(source)
                     status = "passed"
-                    if extracted_callback: extracted_callback(source)
+                    if extracted_callback: extracted_callback(source, passed=True)
                 elif source_type == "local_pdf":
                     if "advanced" not in level.lower():
                         print(f"Warning: PDF sources are only permitted in the 'advanced' level. Skipping {source}.")
@@ -85,6 +88,7 @@ class KnowledgeOrchestrator:
                     print(f"Warning: Unrecognized source format '{source}'. Skipping.")
             except Exception as e:
                 print(f"ERROR: Failed to process source '{source}'. Skipping to prevent crash. Error: {e}")
+                if extracted_callback: extracted_callback(source, passed=False)
 
             extracted_knowledge.append({
                 "source_id": str(uuid.uuid4()),
@@ -142,85 +146,126 @@ class KnowledgeOrchestrator:
                 })
 
         # 3. Dynamic Autonomous Web Supplementation
-        MAX_ITERATIONS = 5 # Safety limit to prevent infinite loops
-        iteration = 0
-        
-        while iteration < MAX_ITERATIONS:
-            current_knowledge_text = "\n\n".join([item["content"] for item in extracted_knowledge if item["status"] == "passed"])
-            
-            needs_supplementation = False
-            queries_to_run = []
-            
-            if len([k for k in extracted_knowledge if k["status"] == "passed"]) == 0:
-                needs_supplementation = True
-                queries_to_run = [f"{topic} {level} tutorial concept guide"]
-                print(f"\n[Iteration {iteration+1}] No knowledge yet. Starting autonomous search...")
-            else:
-                print(f"\n[Iteration {iteration+1}] Evaluating if current knowledge base is sufficient for {level} level...")
-                eval_result = await asyncio.to_thread(self.research_agent.evaluate_knowledge_sufficiency, current_knowledge_text, topic, level)
-                
-                if eval_result.get("is_sufficient", True):
-                    print(f"✅ AI determined the knowledge base is now SUFFICIENT for '{topic}' at the {level} level!")
-                    break # We have enough!
-                    
-                needs_supplementation = True
-                queries_to_run = eval_result.get("queries", [f"{topic} {level} advanced concepts"])
-                print(f"⚠️ Knowledge still insufficient. AI generated new targeted queries to fill gaps: {queries_to_run}")
+        # Set dynamic accepted source goal based on chosen level
+        level_lower = level.lower()
+        if "beginner" in level_lower:
+            TARGET_ACCEPTED = 7
+        elif "intermediate" in level_lower:
+            TARGET_ACCEPTED = 11
+        else: # advanced
+            TARGET_ACCEPTED = 16
 
-            if needs_supplementation:
-                found_urls = []
-                for query in queries_to_run:
-                    urls = await asyncio.to_thread(self.research_agent.search_web, query)
-                    for u in urls:
-                        norm_u = self._normalize_url(u)
-                        if norm_u not in found_urls and not any(self._normalize_url(k.get("url", "")) == norm_u for k in extracted_knowledge):
-                            found_urls.append(norm_u)
-                
-                if not found_urls:
-                    print("Could not find any new URLs to scrape. Ending search.")
+        # Set up search queries list (deterministic, no LLM queries, with research papers for advanced)
+        if "advanced" in level_lower:
+            queries_to_run = [
+                f"{topic} {level} {reason} research papers",
+                f"{topic}",
+                f"{topic} {level}",
+                f"{topic} {reason}",
+                f"{topic} research papers"
+            ]
+        else:
+            queries_to_run = [
+                f"{topic} {level} level for {reason}",
+                f"{topic}",
+                f"{topic} {level}",
+                f"{topic} {reason}"
+            ]
+
+        # Track which domains have already been scraped so we never hit the same site twice
+        seen_domains = set()
+        for k in extracted_knowledge:
+            if k["status"] == "passed":
+                try:
+                    from urllib.parse import urlparse
+                    seen_domains.add(urlparse(k["url"]).netloc.replace("www.", ""))
+                except Exception:
+                    pass
+
+        # Execute searches sequentially
+        for query in queries_to_run:
+            accepted_so_far = sum(1 for k in extracted_knowledge if k["status"] == "passed")
+            if accepted_so_far >= TARGET_ACCEPTED:
+                print(f"\n✅ Reached target of {TARGET_ACCEPTED} accepted sources. Stopping search.")
+                break
+
+            print(f"\n[Search] Executing query: '{query}'...")
+            candidate_urls = []
+            try:
+                candidate_urls = await asyncio.to_thread(self.research_agent.search_web, query)
+            except Exception as e:
+                print(f"⚠️ Error searching web for query '{query}': {e}. Trying next subquery.")
+                continue
+
+            if not candidate_urls:
+                print(f"⚠️ No results returned for query '{query}'. Trying next subquery.")
+                continue
+
+            # Limit per query dynamically to ensure diverse sources but still hit target
+            URLS_PER_QUERY = max(4, int((TARGET_ACCEPTED * 2.5) / len(queries_to_run)))
+            valid_candidates = []
+            for u in candidate_urls:
+                try:
+                    from urllib.parse import urlparse
+                    domain = urlparse(u).netloc.replace("www.", "")
+                except Exception:
+                    domain = u
+                norm_u = self._normalize_url(u)
+                already_scraped = any(
+                    self._normalize_url(k.get("url", "")) == norm_u
+                    for k in extracted_knowledge
+                )
+                # Domain-level dedup
+                if domain not in seen_domains and not already_scraped:
+                    valid_candidates.append(u)
+
+            print(f"Found {len(valid_candidates)} candidate URLs from fresh domains. Scraping up to {URLS_PER_QUERY}…")
+
+            # Scrape and evaluate
+            for url in valid_candidates[:URLS_PER_QUERY]:
+                if accepted_so_far >= TARGET_ACCEPTED:
                     break
-                    
-                print(f"Found {len(found_urls)} new potential sources. Scraping...")
-                scraped_in_iteration = 0
-                
-                # Scrape up to 2 high-quality sources per iteration, then pause to re-evaluate the whole base
-                for url in found_urls:
-                    # original URL could have query params stripped in normalization, so it's safer to scrape the original URL or normalized?
-                    # The normalized url is safe for most.
-                    status = "failed"
-                    content = ""
-                    try:
-                        content = await self.web_scraper.scrape_url(url)
-                        # Agent-sourced links DO go through the strict quality gate
-                        is_valid = await asyncio.to_thread(self.research_agent.evaluate_source_quality, content, topic, level)
+
+                try:
+                    from urllib.parse import urlparse
+                    domain = urlparse(url).netloc.replace("www.", "")
+                except Exception:
+                    domain = url
+
+                seen_domains.add(domain)   # mark domain as visited regardless of outcome
+                status  = "failed"
+                content = ""
+                print(f"Scraping candidate: {url}")
+                try:
+                    content = await self.web_scraper.scrape_url(url)
+                    if content and len(content) >= 500:
+                        is_valid = await asyncio.to_thread(
+                            self.research_agent.evaluate_source_quality, content, topic, level
+                        )
                         if is_valid:
                             status = "passed"
-                            print(f"🟢 Source {url} PASSED quality gate.")
-                            if extracted_callback: extracted_callback(url)
-                            scraped_in_iteration += 1
+                            accepted_so_far += 1
+                            print(f"🟢 {url} — ACCEPTED ({accepted_so_far}/{TARGET_ACCEPTED})")
+                            if extracted_callback: extracted_callback(url, passed=True)
                         else:
-                            print(f"🔴 Source {url} FAILED quality gate. Discarding.")
-                            status = "failed"
-                    except Exception as e:
-                        print(f"ERROR: Failed to scrape {url}. Error: {e}")
-                        
-                    extracted_knowledge.append({
-                        "source_id": str(uuid.uuid4()),
-                        "url": url,
-                        "type": "web",
-                        "title": url,
-                        "status": status,
-                        "origin": "autonomous",
-                        "content": content
-                    })
-                    
-                    if scraped_in_iteration >= 2:
-                        break # Go back to the top of the while loop to ask the AI if this is enough now!
-            
-            iteration += 1
-            
-        if iteration >= MAX_ITERATIONS:
-            print("\n[Warning] Reached maximum AI research cycles. Proceeding with gathered knowledge.")
-        
+                            print(f"🔴 {url} — REJECTED by quality gate")
+                            if extracted_callback: extracted_callback(url, passed=False)
+                    else:
+                        print(f"🔴 {url} — REJECTED (too short or empty)")
+                        if extracted_callback: extracted_callback(url, passed=False)
+                except Exception as e:
+                    print(f"⚠️ Error scraping/processing source {url}: {e}. Continuing.")
+                    if extracted_callback: extracted_callback(url, passed=False)
+
+                extracted_knowledge.append({
+                    "source_id": str(uuid.uuid4()),
+                    "url":        url,
+                    "type":       "web",
+                    "title":      url,
+                    "status":     status,
+                    "origin":     "autonomous",
+                    "content":    content,
+                })
+
         print("\n--- Knowledge Gathering Complete ---")
         return extracted_knowledge

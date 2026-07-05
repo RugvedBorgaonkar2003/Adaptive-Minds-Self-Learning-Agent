@@ -2,17 +2,11 @@ from langgraph.graph import StateGraph, START, END
 from typing import Dict, Any, Literal
 from langchain_core.messages import HumanMessage, AIMessage
 
-from src.tutor import (
-    TutorState, 
-    retrieve_knowledge_node, 
-    teach_concept_node, 
-    evaluate_module_node, 
-    grade_student_node,
-    insight_node
-)
-from src.student_profile import StudentProfileManager
-from src.notes_gen import NotesGenerator
-from src.report_gen import ReportGenerator
+from .tutor import TutorState, retrieve_knowledge_node, teach_concept_node, evaluate_module_node, grade_student_node, insight_node
+from .student_profile import StudentProfileManager
+from .notes_gen import NotesGenerator
+from .report_gen import ReportGenerator
+from .flashcard_gen import FlashcardGenerator
 
 # ==========================================
 # Graph Compilation
@@ -170,7 +164,7 @@ def run_tutor_session(curriculum: Dict[str, Any]):
     while True:
         # Run graph
         config = {"configurable": {"thread_id": "terminal_session_1"}}
-        state = tutor_graph.invoke(state)
+        state = tutor_graph.invoke(state, config=config)
         
         # Check completion
         if state.get("current_module_index", 0) >= len(curriculum.get("modules", [])):
@@ -203,7 +197,6 @@ def run_tutor_session(curriculum: Dict[str, Any]):
                     print("\n[System] Please provide a concept. Usage: /flashcards <concept>")
                     continue
                 
-                from src.flashcard_gen import FlashcardGenerator
                 flash_gen = FlashcardGenerator()
                 cards = flash_gen.generate(concept=concept, num_cards=5)
                 flash_gen.display(cards)

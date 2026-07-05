@@ -1,0 +1,95 @@
+/* ─── ForestScene.css  ──────────────────────────────────────────────────────
+   All keyframe animations for the living forest background in HarvestingStream.
+   Every property animated is either transform or opacity → compositor only → 60 fps.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Trees sway gently in the breeze */
+@keyframes treeSway {
+  0%, 100% { transform: rotate(0deg);    }
+  28%       { transform: rotate(1.3deg); }
+  72%       { transform: rotate(-1.3deg);}
+}
+
+/* Clouds drift lazily across sky */
+@keyframes cloudRight {
+  from { transform: translateX(-440px); }
+  to   { transform: translateX(calc(100vw + 440px)); }
+}
+@keyframes cloudLeft {
+  from { transform: translateX(calc(100vw + 440px)); }
+  to   { transform: translateX(-440px); }
+}
+
+/* Bird flock — left to right */
+@keyframes birdL2R {
+  0%   { transform: translateX(-22vw) translateY(0px);   opacity: 0; }
+  4%   { opacity: 1; }
+  50%  { transform: translateX(52vw)  translateY(-30px); opacity: 1; }
+  96%  { opacity: 1; }
+  100% { transform: translateX(128vw) translateY(0px);   opacity: 0; }
+}
+
+/* Bird flock — right to left */
+@keyframes birdR2L {
+  0%   { transform: translateX(128vw) translateY(0px);   opacity: 0; }
+  4%   { opacity: 1; }
+  50%  { transform: translateX(46vw)  translateY(18px);  opacity: 1; }
+  96%  { opacity: 1; }
+  100% { transform: translateX(-22vw) translateY(0px);   opacity: 0; }
+}
+
+/* Wing flap */
+@keyframes wingFlap {
+  0%, 100% { transform: scaleY(1);     }
+  50%       { transform: scaleY(0.38); }
+}
+
+/* Deer crosses the scene */
+@keyframes deerWalk {
+  0%   { transform: translateX(112vw); opacity: 0; }
+  3%   { opacity: 1; }
+  97%  { opacity: 1; }
+  100% { transform: translateX(-30vw); opacity: 0; }
+}
+
+/* Deer body bobs (walking gait) */
+@keyframes deerBob {
+  0%, 50%, 100% { transform: translateY(0px);  }
+  25%, 75%      { transform: translateY(-6px); }
+}
+
+/* Deer legs swing — forward phase */
+@keyframes legFwd {
+  0%, 100% { transform: rotate(-24deg); }
+  50%      { transform: rotate(24deg);  }
+}
+
+/* Deer legs swing — back phase */
+@keyframes legBack {
+  0%, 100% { transform: rotate(24deg);  }
+  50%      { transform: rotate(-24deg); }
+}
+
+/* Mist layers drift */
+@keyframes mistDrift {
+  0%, 100% { transform: translateX(0px);  opacity: 0.55; }
+  50%      { transform: translateX(48px); opacity: 0.75; }
+}
+@keyframes mistDrift2 {
+  0%, 100% { transform: translateX(0px);   opacity: 0.4; }
+  50%      { transform: translateX(-55px); opacity: 0.62; }
+}
+
+/* Second distant deer drifts */
+@keyframes deerWalk2 {
+  0%   { transform: translateX(-28vw) scaleX(-1); opacity: 0; }
+  4%   { opacity: 0.6; }
+  96%  { opacity: 0.6; }
+  100% { transform: translateX(112vw) scaleX(-1); opacity: 0; }
+}
+
+/* Horizon glow breathes */
+@keyframes horizonBreathe {
+  0%, 100% { opacity: 0.82; }
+  50%      { opacity: 1.0;  }
+}

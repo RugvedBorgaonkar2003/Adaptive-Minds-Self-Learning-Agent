@@ -1,0 +1,32 @@
+[
+    {
+        "front": "What is Neuroscience?",
+        "back": "The scientific study of the structure and function of the brain and nervous system.",
+        "concept": "What is Neuroscience",
+        "difficulty": "easy"
+    },
+    {
+        "front": "What is the primary focus of Neuroscience?",
+        "back": "Understanding the brain and nervous system's structure, function, and behavior.",
+        "concept": "What is Neuroscience",
+        "difficulty": "medium"
+    },
+    {
+        "front": "How does Neuroscience differ from Psychology?",
+        "back": "Neuroscience focuses on the biological aspects of the brain and nervous system, while Psychology focuses on behavior and mental processes.",
+        "concept": "What is Neuroscience",
+        "difficulty": "hard"
+    },
+    {
+        "front": "What are some key areas of study in Neuroscience?",
+        "back": "Neuroanatomy, Neurophysiology, Neuropharmacology, and Neuroplasticity.",
+        "concept": "What is Neuroscience",
+        "difficulty": "medium"
+    },
+    {
+        "front": "What are the potential applications of Neuroscience?",
+        "back": "Developing new treatments for neurological and psychiatric disorders, improving cognitive function, and enhancing brain-computer interfaces.",
+        "concept": "What is Neuroscience",
+        "difficulty": "hard"
+    }
+]

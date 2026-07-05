@@ -1,0 +1,32 @@
+[
+    {
+        "front": "What is a graph?",
+        "back": "A graph is an abstract data type consisting of a set of objects connected via links.",
+        "concept": "Definition of a graph",
+        "difficulty": "easy"
+    },
+    {
+        "front": "What are the two main components of a graph?",
+        "back": "Vertices and edges.",
+        "concept": "Definition of a graph",
+        "difficulty": "medium"
+    },
+    {
+        "front": "How is a graph formally represented?",
+        "back": "As a pair of sets (V, E), where V is the set of vertices and E is the set of edges.",
+        "concept": "Definition of a graph",
+        "difficulty": "hard"
+    },
+    {
+        "front": "What is the purpose of a graph in computer science and mathematics?",
+        "back": "To model relationships between objects, such as networks, social connections, or paths between cities.",
+        "concept": "Definition of a graph",
+        "difficulty": "medium"
+    },
+    {
+        "front": "What are some common ways to represent a graph?",
+        "back": "Pictorially, adjacency matrix, and adjacency list.",
+        "concept": "Definition of a graph",
+        "difficulty": "medium"
+    }
+]

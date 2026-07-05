@@ -1,7 +1,7 @@
 {
     "learning_velocity": "medium",
-    "boredom_score": 0,
-    "confusion_score": 0,
+    "boredom_score": 5.2,
+    "confusion_score": 0.7,
     "explanation_preference": "balance",
     "question_depth_trend": "shallow",
     "emotional_state": "neutral",
@@ -85,5 +85,19 @@
         }
     ],
     "streak": 9,
-    "average_mastery": 85.6
+    "average_mastery": 85.6,
+    "_learning_velocity_history": [
+        "slow",
+        "medium",
+        "medium",
+        "medium",
+        "medium"
+    ],
+    "_question_depth_trend_history": [
+        "shallow",
+        "shallow",
+        "shallow",
+        "shallow",
+        "shallow"
+    ]
 }

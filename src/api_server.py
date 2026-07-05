@@ -148,13 +148,17 @@ async def _execute_agent_pipeline_async(job_id: str, topic: str, level: str, goa
     job_store[job_id]['status'] = 'running'
     job_store[job_id]['message'] = 'Acquiring knowledge from sources...'
     
-    def log_url(url: str):
+    def log_url(url: str, passed: bool = True):
         if job_id in job_store:
             job_store[job_id]['extracted_urls'].append(url)
+            job_store[job_id]['sources'].append({
+                'url': url,
+                'status': 'accepted' if passed else 'rejected'
+            })
     
     try:
         orchestrator = KnowledgeOrchestrator()
-        structured_knowledge_base = await orchestrator.run(topic, level, sources, extracted_callback=log_url)
+        structured_knowledge_base = await orchestrator.run(topic, level, goal_type, sources, extracted_callback=log_url)
         
         job_store[job_id]['message'] = 'Processing and chunking knowledge...'
         
@@ -248,6 +252,7 @@ async def process_onboarding(
         'message': 'Job queued successfully.',
         'created_at': datetime.now().isoformat(),
         'extracted_urls': [],
+        'sources': [],          # [{url, status: 'accepted'|'rejected'}]
         'curriculum': None
     }
     
@@ -299,11 +304,14 @@ async def process_chat(request: ChatRequest):
             # Pass user intent cleanly
             text = request.user_input if request.user_input else "Let's learn this topic now."
             state_update["messages"] = [HumanMessage(content=f"[Jumping to new topic] {text}")]
+            new_state = tutor_graph.invoke(state_update, config=config)
         else:
             if request.user_input:
                 state_update["messages"] = [HumanMessage(content=request.user_input)]
-            
-        new_state = tutor_graph.invoke(state_update, config=config)
+                new_state = tutor_graph.invoke(state_update, config=config)
+            else:
+                # No new user input; do not re-run graph. Just return existing state values.
+                new_state = current_state.values
         
     messages = new_state.get("messages", [])
     ai_message = ""
@@ -591,4 +599,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     is_prod = "PORT" in os.environ
     print(f"Starting FastAPI server on http://0.0.0.0:{port} (prod={is_prod})")
-    uvicorn.run("src.api_server:app", host="0.0.0.0", port=port, reload=not is_prod)
+    uvicorn.run("src.api_server:app", host="0.0.0.0", port=port, reload=False)

@@ -112,7 +112,9 @@ class ResearchAgent:
 Evaluate this raw web scrape for learning about: '{topic}' at a '{level}' level.
 
 IGNORE website garbage (navigation menus, cookie banners, footers).
-Grade the source from 1 to 10 on the following criteria. To pass, the overall score MUST be 6 or higher. It does NOT have to be perfect, just useful enough to learn from.
+Grade the source from 1 to 10 on the following criteria. To pass, the overall score MUST be 7 or higher.
+AUTOMATICALLY REJECT (score 1) if the page is: a course listing, a pricing/checkout page, a login wall, a search results page, or primarily an advertisement.
+It must contain actual readable learning content — not just course titles or syllabi.
 1. Relevance: Does it contain useful information about the topic?
 2. Depth: Is it somewhat appropriate for a '{level}' level?
 3. Authority: Is it educational and objective?
@@ -140,10 +142,10 @@ Text Snippet:
         except Exception as e:
             error_str = str(e).lower()
             if "429" in error_str or "resource_exhausted" in error_str or "rate" in error_str:
-                # API rate limit — the content was scraped fine, so accept it
-                # rather than throwing away good data due to quota issues.
-                print(f"Quality gate hit rate limit: {e}. Accepting source to preserve data.")
-                return True
+                # Rate limit hit during quality check — skip this source.
+                # Auto-accepting would defeat the entire purpose of the gate.
+                print(f"Quality gate hit rate limit: {e}. Skipping source (not auto-accepting).")
+                return False
             print(f"Quality gate error: {e}. Defaulting to discarding source to be safe.")
             return False
             
@@ -190,7 +192,14 @@ Current Knowledge Outline:
         """
         Uses DuckDuckGo to search the web and extracts URLs from the results.
         """
-        blacklist = ["pinterest.com", "quora.com", "medium.com/tag", "coursehero.com", "chegg.com"]
+        # Blacklist: paywalled course platforms, low-quality aggregators, or sites that
+        # require login/purchase to access real content
+        blacklist = [
+            "pinterest.com", "quora.com", "medium.com/tag", "coursehero.com", "chegg.com",
+            "udemy.com", "coursera.org", "edx.org", "skillshare.com", "udacity.com",
+            "pluralsight.com", "linkedin.com/learning", "oreilly.com", "manning.com",
+            "datacamp.com", "codecademy.com",
+        ]
         print(f"Searching web for: '{query}'")
         try:
             results_str = self.search_tool.invoke(query)

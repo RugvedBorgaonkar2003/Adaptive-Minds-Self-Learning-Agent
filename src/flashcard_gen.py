@@ -1,12 +1,23 @@
 import json
 import re
 import os
+import threading
 from typing import List, Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from src.llm import get_llm
-from src.vector_db import VectorDBManager
+from .llm import get_llm
+from .vector_db import VectorDBManager
 
+# 1. Thread Lock for Database Safety
+_flashcard_lock = threading.Lock()
+
+# 2. Global Cache to prevent RAM Killer
+_db_cache = {}
+
+def get_cached_db(topic: str) -> VectorDBManager:
+    if topic not in _db_cache:
+        _db_cache[topic] = VectorDBManager(topic_name=topic)
+    return _db_cache[topic]
 
 class FlashcardGenerator:
     """
@@ -18,7 +29,7 @@ class FlashcardGenerator:
 
     def __init__(self):
         self.llm = get_llm()
-        self.db = VectorDBManager()
+        # VectorDB dynamically fetched via get_cached_db() to prevent RAM leaks
         self.save_dir = "./data/flashcards"
         os.makedirs(self.save_dir, exist_ok=True)
 
@@ -35,16 +46,21 @@ class FlashcardGenerator:
         """
         print(f"\n🃏 [Flashcard Generator] Generating {num_cards} cards for: '{concept}'...")
 
-        # 1. Pull relevant context from ChromaDB
-        docs = self.db.retrieve_relevant_knowledge(query=concept, top_k=5)
+        # 1. Pull relevant context from ChromaDB using cached Singleton
+        # In a real pipeline, the active topic is passed. Here we default to general.
+        db = get_cached_db("general")
+        docs = db.retrieve_relevant_knowledge(query=concept, top_k=5)
+        
         if not docs:
             context = f"No specific context found. Generate flashcards based on general knowledge of '{concept}'."
         else:
-            context = "\n\n---\n\n".join([d.page_content for d in docs])
-
-        # Truncate if too long
-        if len(context) > 8000:
-            context = context[:8000] + "... [TRUNCATED]"
+            # Iterative Context Packing to prevent Blind Truncation (Chain-sawing)
+            context = ""
+            for doc in docs:
+                chunk_str = f"{doc.page_content}\n\n---\n\n"
+                if len(context) + len(chunk_str) > 8000:
+                    break
+                context += chunk_str
 
         # 2. Build the prompt
         prompt = f"""You are an expert educator creating flashcards for a student.
@@ -86,8 +102,9 @@ You MUST return ONLY a valid JSON array matching this exact schema:
             if isinstance(content_str, list):
                 content_str = "".join([b.get("text", "") for b in content_str if isinstance(b, dict)])
 
-            # Extract JSON array from response
-            match = re.search(r'\[.*\]', str(content_str), re.DOTALL)
+            # Extract JSON array from response (Aggressively strip markdown to prevent crashes)
+            clean_str = str(content_str).replace("```json", "").replace("```", "").strip()
+            match = re.search(r'\[.*\]', clean_str, re.DOTALL)
             if not match:
                 raise ValueError("LLM response did not contain a valid JSON array.")
 
@@ -114,21 +131,25 @@ You MUST return ONLY a valid JSON array matching this exact schema:
         safe_name = concept.lower().replace(" ", "_").replace("/", "-")[:60]
         filepath = os.path.join(self.save_dir, f"{safe_name}.json")
 
-        existing = []
-        if os.path.exists(filepath):
-            with open(filepath, "r", encoding="utf-8") as f:
-                try:
-                    existing = json.load(f)
-                except json.JSONDecodeError:
-                    existing = []
+        with _flashcard_lock:
+            existing = []
+            if os.path.exists(filepath):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    try:
+                        existing = json.load(f)
+                    except json.JSONDecodeError:
+                        existing = []
 
-        # Merge new cards with existing (avoid duplicates based on 'front')
-        existing_fronts = {c["front"] for c in existing}
-        new_cards = [c for c in cards if c["front"] not in existing_fronts]
-        merged = existing + new_cards
+            # Merge new cards with existing (avoid duplicates based on 'front')
+            existing_fronts = {c["front"] for c in existing}
+            new_cards = [c for c in cards if c["front"] not in existing_fronts]
+            merged = existing + new_cards
 
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(merged, f, indent=4, ensure_ascii=False)
+            # Atomic Writes to prevent corrupted files
+            temp_path = filepath + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(merged, f, indent=4, ensure_ascii=False)
+            os.replace(temp_path, filepath)
 
         print(f"💾 Flashcards saved to: {filepath}")
 

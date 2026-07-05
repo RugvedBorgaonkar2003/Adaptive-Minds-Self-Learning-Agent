@@ -27,7 +27,8 @@ class VectorDBManager:
 
     def __init__(self, topic_name: str = "general_knowledge", persist_directory: str = "./data/chroma_db"):
         self.persist_directory = persist_directory
-        self.collection_name = self._sanitize_collection_name(topic_name)
+        # Force all DB managers to use the unified general_knowledge collection
+        self.collection_name = self._sanitize_collection_name("general_knowledge")
         os.makedirs(self.persist_directory, exist_ok=True)
         
         # We use a highly efficient, CPU-friendly open-source embedding model (all-MiniLM-L6-v2)

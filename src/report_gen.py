@@ -1,13 +1,25 @@
 import os
 import re
 import json
+import threading
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 
 from langchain_core.messages import SystemMessage, HumanMessage, BaseMessage
-from src.llm import get_llm
-from src.vector_db import VectorDBManager
-from src.student_profile import StudentProfileManager
+from .llm import get_llm
+from .vector_db import VectorDBManager
+from .student_profile import StudentProfileManager
+
+# 1. Thread Lock for Database Safety
+_report_lock = threading.Lock()
+
+# 2. Global Cache to prevent RAM Killer
+_db_cache = {}
+
+def get_cached_db(topic: str) -> VectorDBManager:
+    if topic not in _db_cache:
+        _db_cache[topic] = VectorDBManager(topic_name=topic)
+    return _db_cache[topic]
 
 class ReportGenerator:
     """
@@ -18,7 +30,7 @@ class ReportGenerator:
 
     def __init__(self):
         self.llm = get_llm()
-        self.db  = VectorDBManager()
+        # VectorDB dynamically fetched via get_cached_db() to prevent RAM leaks
         self.save_dir = "./data/reports"
         os.makedirs(self.save_dir, exist_ok=True)
 
@@ -110,8 +122,11 @@ class ReportGenerator:
         filename  = f"{safe_name}_{timestamp}.json"
         filepath  = os.path.join(self.save_dir, filename)
         
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(report_data, f, indent=2)
+        with _report_lock:
+            temp_path = filepath + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(report_data, f, indent=2)
+            os.replace(temp_path, filepath)
             
         print(f"✅ Report saved → {filepath}")
         return filepath
@@ -133,8 +148,16 @@ class ReportGenerator:
             role = "Student" if isinstance(msg, HumanMessage) else "Tutor"
             history_text += f"{role}: {str(msg.content)[:300]}\n"
 
-        docs = self.db.retrieve_relevant_knowledge(query=module_title, top_k=4)
-        kb_context = "\n\n".join([d.page_content for d in docs])[:4000]
+        db = get_cached_db(curriculum.get("topic", "general"))
+        docs = db.retrieve_relevant_knowledge(query=module_title, top_k=4)
+        
+        # Iterative Context Packing to prevent Blind Truncation
+        kb_context = ""
+        for doc in docs:
+            chunk_str = f"{doc.page_content}\n\n"
+            if len(kb_context) + len(chunk_str) > 4000:
+                break
+            kb_context += chunk_str
 
         prompt = f"""You are an honest and caring AI mentor writing a personalised feedback section for a student who has just completed a module.
 
@@ -164,7 +187,8 @@ Return ONLY a valid JSON object with these three keys:
                 SystemMessage(content="You are a concise, honest AI mentor. Output ONLY valid JSON, no markdown."),
                 HumanMessage(content=prompt)
             ])
-            content = str(response.content)
+            # Aggressively strip markdown to prevent crashes
+            content = str(response.content).replace("```json", "").replace("```", "").strip()
             match = re.search(r'\{.*\}', content, re.DOTALL)
             if match:
                 data = json.loads(match.group(0))
@@ -256,7 +280,8 @@ JSON schema:
                 SystemMessage(content="You are a precise AI advisor. Output ONLY valid JSON."),
                 HumanMessage(content=prompt)
             ])
-            content = str(response.content)
+            # Aggressively strip markdown to prevent crashes
+            content = str(response.content).replace("```json", "").replace("```", "").strip()
             match = re.search(r'\{.*\}', content, re.DOTALL)
             if match:
                 return json.loads(match.group(0))

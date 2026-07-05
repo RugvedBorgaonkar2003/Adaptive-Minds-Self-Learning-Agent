@@ -1,96 +1,83 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import './Login.css';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isSignup = location.pathname === '/signup';
 
   return (
-    <div className="login-container">
-      {/* Left Side: Focus Zone */}
-      <div className="login-left">
-        <motion.div 
-          className="login-form-wrapper"
-          initial={{ opacity: 0, x: -50 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        >
-          <Link to="/" className="login-logo">ADAPTIVE MINDS</Link>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-          >
-            <h1 className="login-heading">Welcome back.</h1>
-            <p className="login-subheading">Continue your journey into deep learning.</p>
-          </motion.div>
-
-          <motion.form 
-            className="login-form"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              navigate('/dashboard');
-            }}
-          >
-            <div className="input-group">
-              <label>Email Address</label>
-              <input type="email" placeholder="Enter your email" />
-            </div>
-            
-            <div className="input-group">
-              <label>Password</label>
-              <input type="password" placeholder="Enter your password" />
-            </div>
-            
-            <div className="form-actions">
-              <a href="#" className="forgot-password">Forgot password?</a>
-            </div>
-            
-            <motion.button 
-              type="submit" 
-              className="login-submit-btn"
-              whileHover={{ y: -2 }}
-              transition={{ duration: 0.2 }}
-            >
-              Log In
-            </motion.button>
-          </motion.form>
-          
-          <motion.p 
-            className="login-footer"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.8, delay: 0.6 }}
-          >
-            Don't have an account? <Link to="/signup">Sign up</Link>
-          </motion.p>
-        </motion.div>
+    <div className="auth-wrapper">
+      {/* Ambient Background */}
+      <div className="auth-bg">
+        <div className="auth-glow-1"></div>
+        <div className="auth-glow-2"></div>
       </div>
 
-      {/* Right Side: The Immersion */}
-      <div className="login-right">
-        <motion.img 
-          src="https://images.unsplash.com/photo-1448375240586-882707db888b?q=80&w=2070&auto=format&fit=crop" 
-          alt="Misty deep-pine forest at dawn" 
-          className="login-bg-image"
-          initial={{ scale: 1.1 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 20, ease: "linear", repeat: Infinity, repeatType: "reverse" }}
-        />
-        <div className="login-bg-overlay"></div>
-        <motion.div 
-          className="login-quote"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.2, delay: 0.8, ease: "easeOut" }}
+      {/* The Centered Card */}
+      <motion.div 
+        className="auth-card"
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Link to="/" className="auth-logo">Adaptive Minds</Link>
+        
+        <h1 className="auth-heading">
+          {isSignup ? 'Begin your journey.' : 'Welcome back.'}
+        </h1>
+        <p className="auth-subheading">
+          {isSignup 
+            ? 'Create an account to enter the sanctuary.' 
+            : 'Continue your deep learning session.'}
+        </p>
+
+        <form 
+          className="auth-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            // Both login and signup lead to dashboard in this mockup
+            navigate('/dashboard');
+          }}
         >
-          "Mastery is a journey of a thousand focused moments."
-        </motion.div>
-      </div>
+          {isSignup && (
+            <div className="auth-input-group">
+              <label>Full Name</label>
+              <input type="text" placeholder="Enter your name" required />
+            </div>
+          )}
+          
+          <div className="auth-input-group">
+            <label>Email Address</label>
+            <input type="email" placeholder="Enter your email" required />
+          </div>
+          
+          <div className="auth-input-group">
+            <label>Password</label>
+            <input type="password" placeholder="Enter your password" required />
+          </div>
+          
+          <motion.button 
+            type="submit" 
+            className="auth-submit-btn"
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ duration: 0.2 }}
+          >
+            {isSignup ? 'Sign Up' : 'Log In'}
+          </motion.button>
+        </form>
+        
+        <p className="auth-footer">
+          {isSignup ? 'Already have an account? ' : 'Don\'t have an account? '}
+          {isSignup 
+            ? <Link to="/login">Log in</Link>
+            : <Link to="/signup">Sign up</Link>
+          }
+        </p>
+      </motion.div>
     </div>
   );
 }
